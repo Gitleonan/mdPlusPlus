@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 const packageJsonPath = new URL('../package.json', import.meta.url);
 const cargoTomlPath = new URL('../src-tauri/Cargo.toml', import.meta.url);
 const tauriConfPath = new URL('../src-tauri/tauri.conf.json', import.meta.url);
+const aboutModalPath = new URL('../src/components/AboutModal/AboutModal.tsx', import.meta.url);
 
 const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
 const version = packageJson.version;
@@ -36,4 +37,18 @@ if (nextTauriConf === tauriConfRaw) {
 } else {
   await writeFile(tauriConfPath, nextTauriConf);
   console.log(`Synced src-tauri/tauri.conf.json to package.json version ${version}`);
+}
+
+// Sync AboutModal APP_VERSION
+const aboutModalRaw = await readFile(aboutModalPath, 'utf8');
+const nextAboutModal = aboutModalRaw.replace(
+  /^const APP_VERSION = '.*';$/m,
+  `const APP_VERSION = '${version}';`,
+);
+
+if (nextAboutModal === aboutModalRaw) {
+  console.log(`AboutModal already matches package.json version ${version}`);
+} else {
+  await writeFile(aboutModalPath, nextAboutModal);
+  console.log(`Synced AboutModal APP_VERSION to package.json version ${version}`);
 }

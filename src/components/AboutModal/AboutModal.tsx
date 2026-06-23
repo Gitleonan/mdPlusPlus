@@ -6,7 +6,7 @@ import { useTabsStore } from '../../stores/tabsStore';
 import appIcon from '../../assets/app-icon.svg';
 import featuresMd from '../../../features.md?raw';
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '0.3.0';
 const GITHUB_URL = 'https://github.com/Gitleonan/easy-md';
 
 interface AboutModalProps {
