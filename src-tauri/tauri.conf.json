@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "md++",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "com.easymd.app",
   "build": {
     "frontendDist": "../dist",
@@ -31,7 +31,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "msi"],
+    "targets": [
+      "dmg",
+      "msi"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -45,7 +48,10 @@
     },
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": [
+          "md",
+          "markdown"
+        ],
         "mimeType": "text/markdown",
         "description": "Markdown 文件"
       }
