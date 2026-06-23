@@ -49,6 +49,7 @@ pub fn run() {
             commands::files::delete_custom_theme,
             commands::files::get_app_data_dir,
             commands::opener::open_containing_folder,
+            commands::opener::open_file_with_system,
             commands::opener::check_file_association,
         commands::opener::register_file_association,
             commands::recent::list_recent,

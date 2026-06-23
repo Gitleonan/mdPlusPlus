@@ -5,6 +5,47 @@ use std::process::Command;
 #[cfg(target_os = "macos")]
 use std::io::Write;
 
+/// 用系统默认程序打开任意文件（绕过 opener plugin 的路径 ACL）
+/// 适用于打开 app data dir 下的临时导出文件等不受 opener plugin 信任的路径
+#[tauri::command]
+pub async fn open_file_with_system(path: String) -> Result<(), String> {
+	if path.trim().is_empty() {
+		return Err("文件路径不能为空".to_string());
+	}
+	let path = PathBuf::from(path);
+	tauri::async_runtime::spawn_blocking(move || open_file(&path))
+		.await
+		.map_err(|e| format!("打开文件失败: {}", e))?
+}
+
+#[cfg(target_os = "windows")]
+fn open_file(path: &Path) -> Result<(), String> {
+	Command::new("cmd")
+		.args(["/C", "start", "", "/B"])
+		.arg(path)
+		.spawn()
+		.map_err(|e| format!("启动关联程序失败: {}", e))?;
+	Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn open_file(path: &Path) -> Result<(), String> {
+	Command::new("open")
+		.arg(path)
+		.spawn()
+		.map_err(|e| format!("启动关联程序失败: {}", e))?;
+	Ok(())
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_file(path: &Path) -> Result<(), String> {
+	Command::new("xdg-open")
+		.arg(path)
+		.spawn()
+		.map_err(|e| format!("启动关联程序失败: {}", e))?;
+	Ok(())
+}
+
 #[tauri::command]
 pub async fn open_containing_folder(path: String) -> Result<(), String> {
 	if path.trim().is_empty() {
