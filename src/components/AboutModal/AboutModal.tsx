@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { openExternalUrl, registerFileAssociation, checkFileAssociation } from '../../ipc/opener';
 import { writeFile, getAppDataDir } from '../../ipc/files';
 import { useTabsStore } from '../../stores/tabsStore';
@@ -65,7 +66,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
     }
   }, [settingDefault]);
 
-  if (!open) return null;
+  if (!open) return;
 
   const toggleDebug = () => {
     const next = !debug;
@@ -75,8 +76,24 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
   };
 
   return (
-    <div className="about-overlay" onClick={onClose}>
-      <div className="about-modal" onClick={(e) => e.stopPropagation()}>
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="about-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          onClick={onClose}
+        >
+          <motion.div
+            className="about-modal"
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+            onClick={(e) => e.stopPropagation()}
+          >
         <div className="about-modal-inner">
           <img className="about-icon" src={appIcon} alt="" aria-hidden="true" />
           <h3 className="about-title">md++</h3>
@@ -150,7 +167,9 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
             关闭
           </button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+  </AnimatePresence>
   );
 }

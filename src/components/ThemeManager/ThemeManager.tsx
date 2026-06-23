@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomThemeStore, BUILTIN_THEMES } from '../../stores/customThemeStore';
 import templateCss from '../../themes/template.css?raw';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
@@ -27,8 +28,6 @@ export function ThemeManager({ open, onClose }: ThemeManagerProps) {
   useEffect(() => {
     if (open) loadThemes();
   }, [open, loadThemes]);
-
-  if (!open) return null;
 
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -75,8 +74,24 @@ export function ThemeManager({ open, onClose }: ThemeManagerProps) {
   const noThemeActive = !activeTheme && !activeBuiltin;
 
   return (
-    <div className="about-overlay" onClick={onClose}>
-      <div className="theme-modal" onClick={(e) => e.stopPropagation()}>
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="about-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          onClick={onClose}
+        >
+          <motion.div
+            className="theme-modal"
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+            onClick={(e) => e.stopPropagation()}
+          >
         <div className="theme-modal-inner">
           <h3 className="theme-modal-title">自定义主题</h3>
           <p className="theme-modal-desc">
@@ -171,7 +186,9 @@ export function ThemeManager({ open, onClose }: ThemeManagerProps) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+  </AnimatePresence>
   );
 }

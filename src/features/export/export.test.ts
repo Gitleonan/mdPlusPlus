@@ -40,28 +40,12 @@ describe('export', () => {
     expect(html).toContain('katex');
   });
 
-  it('exports pdf via a hidden iframe + window.print, not via saveDialog or rust', async () => {
+  it('exports pdf via main window.print + overlay, not via saveDialog or rust', async () => {
     const root = document.createElement('div');
     root.innerHTML = '<h1>你好</h1><p>Hi</p>';
 
-    // jsdom 没实现 print，给 HTMLIFrameElement.contentWindow.print 打桩
-    const printSpy = vi.fn();
-    // 拦截 iframe 的 srcdoc 设值：onload 在 jsdom 里不会自动触发，手动派发
-    const origAppendChild = document.body.appendChild.bind(document.body);
-    const appendSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((node: Node) => {
-      const result = origAppendChild(node);
-      if (node instanceof HTMLIFrameElement) {
-        // 等下一个微任务，模拟 srcdoc 完成
-        Promise.resolve().then(() => {
-          Object.defineProperty(node, 'contentWindow', {
-            configurable: true,
-            value: { focus: vi.fn(), print: printSpy },
-          });
-          node.dispatchEvent(new Event('load'));
-        });
-      }
-      return result;
-    });
+    // jsdom 没实现 print，给 window.print 打桩
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
 
     await exportDocument({
       element: root,
@@ -75,7 +59,11 @@ describe('export', () => {
     expect(writeFileMock).not.toHaveBeenCalled();
     expect(printSpy).toHaveBeenCalledTimes(1);
 
-    appendSpy.mockRestore();
+    // 验证 overlay 被注入后又清理了
+    expect(document.querySelector('.print-overlay')).toBeNull();
+    expect(document.getElementById('print-overlay-style')).toBeNull();
+
+    printSpy.mockRestore();
   });
 
   it('exports markdown as a new md file', async () => {

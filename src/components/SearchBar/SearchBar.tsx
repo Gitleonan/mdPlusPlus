@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronUp, ChevronDown } from 'lucide-react';
 import { useSearchStore } from '../../stores/searchStore';
 import { useTabsStore } from '../../stores/tabsStore';
@@ -65,8 +66,6 @@ export function SearchBar({ contentRef }: SearchBarProps) {
     focusMatch(marks, current);
   }, [current, total, contentRef]);
 
-  if (!visible) return null;
-
   const clearKeyword = () => {
     const el = contentRef.current;
     if (el) clearHighlights(el);
@@ -76,7 +75,15 @@ export function SearchBar({ contentRef }: SearchBarProps) {
   };
 
   return (
-    <div className="searchbar">
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          className="searchbar"
+          initial={{ opacity: 0, y: -12, filter: 'blur(4px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, y: -12, filter: 'blur(4px)' }}
+          transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+        >
       <div className="searchbar-input-wrap">
         <input
           ref={inputRef}
@@ -107,6 +114,8 @@ export function SearchBar({ contentRef }: SearchBarProps) {
       <button className="searchbar-btn" onClick={() => setVisible(false)} title="关闭">
         <X size={14} strokeWidth={1.5} />
       </button>
-    </div>
+    </motion.div>
+    )}
+  </AnimatePresence>
   );
 }

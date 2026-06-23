@@ -91,8 +91,17 @@ function codeGroupRender(tokens: TokenLike[], idx: number): string {
  * - 容器: GitHub Alerts / tip 容器 / details 折叠 / tabs / code-group
  */
 export function createMarkdownIt(): MarkdownIt {
+  return buildMarkdownIt(false);
+}
+
+/** 创建支持 HTML 标签的实例（用于修订模式注入高亮标记） */
+export function createMarkdownItWithHtml(): MarkdownIt {
+  return buildMarkdownIt(true);
+}
+
+function buildMarkdownIt(html: boolean): MarkdownIt {
   const md = new MarkdownIt({
-    html: false,
+    html,
     linkify: true,
     typographer: true,
   })

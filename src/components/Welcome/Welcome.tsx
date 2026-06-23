@@ -2,6 +2,7 @@ import { openViaDialog } from '../../hooks/useOpenFile';
 import { useRecentStore } from '../../stores/recentStore';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { modKey } from '../../utils/platform';
 import appIcon from '../../assets/app-icon.svg';
 
@@ -35,20 +36,34 @@ export function Welcome() {
 
   useEffect(() => { load(); }, [load]);
 
+  const item = {
+    hidden: { opacity: 0, y: 16, filter: 'blur(4px)' },
+    visible: { opacity: 1, y: 0, filter: 'blur(0px)' },
+  };
+
   return (
     <div className="welcome">
-      <div className="welcome-inner">
-        <img className="welcome-icon" src={appIcon} alt="" aria-hidden="true" />
-        <h1 className="welcome-title">md++</h1>
-        <p className="welcome-subtitle">轻量便捷的 Markdown 阅读器</p>
-        <button className="welcome-open-btn" onClick={openViaDialog}>
-          打开 Markdown 文件
-        </button>
-        <p className="welcome-hint">或将 .md 文件拖入窗口</p>
-        <p className="welcome-shortcut">{modKey()}+O 打开文件</p>
+      <motion.div
+        className="welcome-inner"
+        initial="hidden"
+        animate="visible"
+        variants={{
+          visible: { transition: { staggerChildren: 0.08 } },
+        }}
+      >
+        <motion.img className="welcome-icon" variants={item} src={appIcon} alt="" aria-hidden="true" />
+        <motion.h1 className="welcome-title" variants={item}>md++</motion.h1>
+        <motion.p className="welcome-subtitle" variants={item}>轻量便捷的 Markdown 阅读器</motion.p>
+        <motion.div variants={item}>
+          <button className="welcome-open-btn" onClick={openViaDialog}>
+            打开 Markdown 文件
+          </button>
+        </motion.div>
+        <motion.p className="welcome-hint" variants={item}>或将 .md 文件拖入窗口</motion.p>
+        <motion.p className="welcome-shortcut" variants={item}>{modKey()}+O 打开文件</motion.p>
 
         {files.length > 0 && (
-          <div className="welcome-recent">
+          <motion.div className="welcome-recent" variants={item}>
             <div className="welcome-recent-header">
               <h3>最近打开</h3>
               <span>启动时快速回到上次阅读</span>
@@ -66,9 +81,9 @@ export function Welcome() {
                 </li>
               ))}
             </ul>
-          </div>
+          </motion.div>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }

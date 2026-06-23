@@ -28,11 +28,17 @@ function highlightMarkdownLine(line: string): string {
   if (!/[`!\[\]*_~]/.test(line)) return esc(line);
 
   let result = esc(line);
+  // 内联代码（单反引号）
   result = result.replace(/`([^`]+)`/g, '<span class="ed-inline-code">`$1`</span>');
-  result = result.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<span class="ed-image">![$1]($2)</span>');
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<span class="ed-link">[$1]($2)</span>');
+  // 图片 + 链接（支持含嵌套括号的 URL，如 wiki 链接）
+  result = result.replace(/!\[([^\]]*)\]\(([^()]*(?:\([^()]*\)[^()]*?)*)\)/g, '<span class="ed-image">![$1]($2)</span>');
+  result = result.replace(/\[([^\]]+)\]\(([^()]*(?:\([^()]*\)[^()]*?)*)\)/g, '<span class="ed-link">[$1]($2)</span>');
+  // 粗体
   result = result.replace(/(\*\*|__)(.+?)\1/g, '<span class="ed-bold">$1$2$1</span>');
-  result = result.replace(/(\*|_)(.+?)\1/g, '<span class="ed-italic">$1$2$1</span>');
+  // 斜体：lookahead/lookbehind 防止跨越粗体标记，[^<>()]+ 防止跨越 HTML 标签和 URL 括号
+  result = result.replace(/(?<!\*)\*(?!\*)([^<>()]+)(?<!\*)\*(?!\*)/g, '<span class="ed-italic">*$1*</span>');
+  result = result.replace(/(?<!_)_(?!_)([^<>()]+)(?<!_)_(?!_)/g, '<span class="ed-italic">_$1_</span>');
+  // 删除线
   result = result.replace(/~~(.+?)~~/g, '<span class="ed-strikethrough">~~$1~~</span>');
   return result;
 }
@@ -92,7 +98,7 @@ function syncHighlightedLines(pre: HTMLPreElement, source: string, previousLines
 /**
  * Markdown 文本编辑器——在编辑模式下替代 Content 区域。
  * 双层方案：透明 textarea 叠加高亮 <pre>，实现语法着色。
- * 高亮通过 debounce + 直接 innerHTML 更新，避免击键卡顿。
+ * 高亮通过 requestAnimationFrame 更新，与浏览器渲染周期同步，减少布局抖动。
  */
 export function Editor() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -102,7 +108,8 @@ export function Editor() {
   const isDirty = useEditStore((s) => s.isDirty);
   const setDirty = useEditStore((s) => s.setDirty);
   const markSaved = useEditStore((s) => s.markSaved);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef = useRef(0);
+  const composingRef = useRef(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
 
   /** 更新高亮层 — 按行替换变更节点，不重建整篇 HTML */
@@ -128,19 +135,33 @@ export function Editor() {
       setDirty(false);
     }
     return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      cancelAnimationFrame(rafRef.current);
     };
   }, [activeTab?.id, updateHighlight, setDirty]);
 
   const handleChange = useCallback(() => {
     setDirty(true);
-    // debounce 高亮：150ms 内只触发一次
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    // IME 组合期间（macOS 输入法）不更新高亮，防止干扰输入法和键盘事件
+    if (composingRef.current) return;
+    // 使用 requestAnimationFrame 替代 setTimeout(150ms)：
+    // 与浏览器渲染周期同步，减少布局抖动，降低 macOS WKWebView 丢键风险
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
       const val = textareaRef.current?.value ?? '';
       updateHighlight(val);
-    }, 150);
+    });
   }, [setDirty, updateHighlight]);
+
+  // IME 组合事件（macOS 输入法安全）：组合期间暂停高亮更新
+  const handleCompositionStart = useCallback(() => {
+    composingRef.current = true;
+  }, []);
+
+  const handleCompositionEnd = useCallback(() => {
+    composingRef.current = false;
+    const val = textareaRef.current?.value ?? '';
+    updateHighlight(val);
+  }, [updateHighlight]);
 
   const handleScroll = useCallback(() => {
     if (!activeTab || !textareaRef.current) return;
@@ -216,6 +237,8 @@ export function Editor() {
           className="editor-textarea"
           defaultValue={activeTab.source}
           onChange={handleChange}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           onScroll={handleScroll}
           spellCheck={false}
           placeholder="输入 Markdown 内容…"

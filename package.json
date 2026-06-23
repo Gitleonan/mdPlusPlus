@@ -1,7 +1,7 @@
 {
   "name": "easy-md",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "md++ — 轻量便捷的 Markdown 阅读器 (Windows / macOS)",
   "author": "leonan",
@@ -19,6 +19,8 @@
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
     "@traptitech/markdown-it-katex": "^3.6.0",
+    "diff": "^9.0.0",
+    "framer-motion": "^12.40.0",
     "katex": "^0.17.0",
     "lucide-react": "^1.21.0",
     "markdown-it": "^14.2.0",

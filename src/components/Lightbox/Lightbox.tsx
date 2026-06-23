@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useLightbox } from '../../hooks/useLightbox';
 
 export function Lightbox() {
@@ -18,17 +19,30 @@ export function Lightbox() {
     return () => window.removeEventListener('keydown', onKey);
   }, [src, close]);
 
-  if (!src) return null;
-
   return (
-    <div className="lightbox-overlay" onClick={close}>
-      <img
-        src={src}
-        className="lightbox-img"
-        style={{ transform: `scale(${scale})` }}
-        onClick={(e) => e.stopPropagation()}
-        alt=""
-      />
-    </div>
+    <AnimatePresence>
+      {src && (
+        <motion.div
+          className="lightbox-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={close}
+        >
+          <motion.img
+            src={src}
+            className="lightbox-img"
+            style={{ transform: `scale(${scale})` }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+            onClick={(e) => e.stopPropagation()}
+            alt=""
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

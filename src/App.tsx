@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { listen } from '@tauri-apps/api/event';
 import { TitleBar } from './components/TitleBar/TitleBar';
 import { Sidebar } from './components/Sidebar/Sidebar';
@@ -17,6 +18,8 @@ import { useCustomThemeStore } from './stores/customThemeStore';
 import { useOpenFile } from './hooks/useOpenFile';
 import { useThemeInit } from './features/theme/useThemeInit';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
+import { useRevisionShortcuts } from './hooks/useRevisionShortcuts';
+import { useRevisionStore } from './stores/revisionStore';
 import { useFileWatcher } from './features/fileWatch/useFileWatcher';
 import { useRecentStore } from './stores/recentStore';
 import { useThemeStore } from './stores/themeStore';
@@ -31,6 +34,7 @@ export default function App() {
   useOpenFile();
   useThemeInit();
   useFileWatcher();
+  useRevisionShortcuts();
 
   const contentRef = useRef<HTMLDivElement>(null);
   const hasTabs = useTabsStore((s) => s.tabs.length > 0);
@@ -83,9 +87,10 @@ export default function App() {
     if (activeTab) record(activeTab.filePath, activeTab.fileName);
   }, [activeTab?.id, record]);
 
-  // 切换 tab 时退出编辑模式
+  // 切换 tab 时退出编辑模式和修订模式
   useEffect(() => {
     useEditStore.getState().reset();
+    useRevisionStore.getState().disableRevisionMode();
   }, [activeTab?.id]);
 
   // Zen 模式下 ESC 退出
@@ -108,15 +113,35 @@ export default function App() {
       {hasTabs && activeTab && !isEditing && !isZen && <SearchBar contentRef={contentRef} />}
       <div className="app-body">
         {hasTabs && activeTab && !isZen && <Sidebar toc={activeTab.toc} activeId={activeHeadingId} />}
-        {hasTabs ? (
-          isEditing ? (
-            <Editor />
+        <AnimatePresence mode="wait">
+          {hasTabs ? (
+            isEditing ? (
+              <motion.div
+                key="editor"
+                style={{ flex: 1, display: 'flex', minWidth: 0 }}
+                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <Editor />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="preview"
+                style={{ flex: 1, display: 'flex', minWidth: 0 }}
+                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, filter: 'blur(4px)' }}
+                transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+              >
+                <Content contentRef={contentRef} onActiveHeadingChange={setActiveHeadingId} />
+              </motion.div>
+            )
           ) : (
-            <Content contentRef={contentRef} onActiveHeadingChange={setActiveHeadingId} />
-          )
-        ) : (
-          <Welcome />
-        )}
+            <Welcome />
+          )}
+        </AnimatePresence>
       </div>
       <Lightbox />
       <ExportPdfModal

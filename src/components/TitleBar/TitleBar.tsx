@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useEditStore } from '../../stores/editStore';
 import { useZenStore } from '../../stores/zenStore';
+import { useRevisionStore } from '../../stores/revisionStore';
 import { openViaDialog } from '../../hooks/useOpenFile';
 import { openContainingFolder } from '../../ipc/opener';
 
@@ -40,6 +42,9 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
   const toggleEditing = useEditStore((s) => s.toggleEditing);
   const isZen = useZenStore((s) => s.isZen);
   const toggleZen = useZenStore((s) => s.toggle);
+  const isMonitoring = useRevisionStore(s => s.isRevisionMode);
+  const enableRevisionMode = useRevisionStore(s => s.enableRevisionMode);
+  const disableRevisionMode = useRevisionStore(s => s.disableRevisionMode);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const menuTab = menu ? tabs.find((t) => t.id === menu.tabId) : null;
@@ -64,6 +69,14 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
   const runMenuAction = (action: () => void | Promise<void>) => {
     setMenu(null);
     Promise.resolve(action()).catch((err) => console.error('[tab menu] action failed', err));
+  };
+
+  const handleToggleMonitoring = () => {
+    if (isMonitoring) {
+      disableRevisionMode();
+    } else if (activeTab) {
+      enableRevisionMode(activeTab.source);
+    }
   };
 
   return (
@@ -113,6 +126,47 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
         ))}
       </div>
       <div className="titlebar-tools">
+        {/* 1. 监听变更 — Framer Motion 驱动 switch 按钮 */}
+        <motion.button
+          className="titlebar-switch-btn"
+          onClick={handleToggleMonitoring}
+          disabled={!activeTab}
+          aria-label={isMonitoring ? '停止监听变更' : '开始监听变更'}
+          title={isMonitoring ? '停止监听变更 (Ctrl+Shift+R)' : '监听变更 (Ctrl+Shift+R)'}
+          whileHover={!activeTab ? undefined : { scale: 1.04 }}
+          whileTap={!activeTab ? undefined : { scale: 0.96 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+        >
+          {/* 图标 */}
+          <motion.span
+            className={isMonitoring ? 'switch-icon-on' : ''}
+            animate={isMonitoring ? { rotate: [0, 15, 0] } : { rotate: 0 }}
+            transition={{
+              duration: isMonitoring ? 3.6 : 0.25,
+              repeat: isMonitoring ? Infinity : 0,
+              ease: [0.32, 0.72, 0, 1],
+            }}
+            style={{ display: 'inline-flex', alignItems: 'center' }}
+          >
+            <GitCompareArrows size={iconSize} strokeWidth={1} />
+          </motion.span>
+
+          {/* 文字标签 */}
+          <AnimatePresence mode="wait">
+            <motion.span
+              key={isMonitoring ? 'on' : 'off'}
+              className={isMonitoring ? 'switch-label-on' : ''}
+              initial={{ opacity: 0, y: 6, filter: 'blur(2px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -6, filter: 'blur(2px)' }}
+              transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+            >
+              {isMonitoring ? '监听中' : '监听变更'}
+            </motion.span>
+          </AnimatePresence>
+        </motion.button>
+
+        {/* 2. Zen 模式 */}
         <button
           className={`titlebar-tool-btn titlebar-icon-btn ${isZen ? 'titlebar-tool-active' : ''}`}
           onClick={toggleZen}
@@ -121,6 +175,46 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
         >
           <ScanEye size={iconSize} strokeWidth={1.5} />
         </button>
+
+        {/* 3. 编辑模式 */}
+        <button
+          className={`titlebar-tool-btn titlebar-icon-btn ${isEditing ? 'titlebar-tool-active' : ''}`}
+          onClick={toggleEditing}
+          disabled={!activeTab}
+          aria-label={isEditing ? '切换到预览模式' : '切换到编辑模式'}
+          title={isEditing ? '预览模式 (Ctrl+E)' : '编辑模式 (Ctrl+E)'}
+        >
+          {isEditing
+            ? <Eye size={iconSize} strokeWidth={1.5} />
+            : <Pencil size={iconSize} strokeWidth={1.5} />
+          }
+        </button>
+
+        {/* 4. 刷新 */}
+        <button
+          className="titlebar-tool-btn titlebar-icon-btn"
+          onClick={() => activeTab && reloadTab(activeTab.id)}
+          disabled={!activeTab}
+          aria-label="重新载入当前文件"
+          title="重新载入当前文件"
+        >
+          <RotateCw size={iconSize} strokeWidth={1.5} />
+        </button>
+
+        {/* 导出 */}
+        {activeTab && (
+          <button
+            className="titlebar-tool-btn"
+            onClick={onExport}
+            title={isEditing ? '预览模式下才可导出' : '导出 (Ctrl+P)'}
+            disabled={isEditing}
+          >
+            <Download size={iconSize} strokeWidth={1.5} />
+            <span>导出</span>
+          </button>
+        )}
+
+        {/* 5. 夜间模式 */}
         <button
           className="titlebar-tool-btn titlebar-icon-btn"
           onClick={toggleTheme}
@@ -132,38 +226,8 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
             : <Moon size={iconSize} strokeWidth={1.5} />
           }
         </button>
-        {activeTab && (
-          <>
-            <button
-              className="titlebar-tool-btn titlebar-icon-btn"
-              onClick={() => reloadTab(activeTab.id)}
-              aria-label="重新载入当前文件"
-              title="重新载入当前文件"
-            >
-              <RotateCw size={iconSize} strokeWidth={1.5} />
-            </button>
-            <button
-              className={`titlebar-tool-btn titlebar-icon-btn ${isEditing ? 'titlebar-tool-active' : ''}`}
-              onClick={toggleEditing}
-              aria-label={isEditing ? '切换到预览模式' : '切换到编辑模式'}
-              title={isEditing ? '预览模式 (Ctrl+E)' : '编辑模式 (Ctrl+E)'}
-            >
-              {isEditing
-                ? <Eye size={iconSize} strokeWidth={1.5} />
-                : <Pencil size={iconSize} strokeWidth={1.5} />
-              }
-            </button>
-            <button
-              className="titlebar-tool-btn"
-              onClick={onExport}
-              title={isEditing ? '预览模式下才可导出' : '导出 (Ctrl+P)'}
-              disabled={isEditing}
-            >
-              <Download size={iconSize} strokeWidth={1.5} />
-              <span>导出</span>
-            </button>
-          </>
-        )}
+
+        {/* 6. 主题切换 */}
         <button
           className="titlebar-tool-btn titlebar-icon-btn"
           onClick={onThemeManager}
@@ -172,6 +236,8 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
         >
           <Palette size={iconSize} strokeWidth={1.5} />
         </button>
+
+        {/* 7. 关于 */}
         <button
           className="titlebar-tool-btn titlebar-icon-btn"
           onClick={onAbout}

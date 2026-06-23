@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { ExportFormat } from '../../features/export/export';
 
 interface ExportModalProps {
@@ -40,8 +41,6 @@ export function ExportPdfModal({ open, fileName, onConfirm, onClose }: ExportMod
     return () => window.removeEventListener('keydown', onKey);
   }, [open, busy, onClose]);
 
-  if (!open) return null;
-
   const handleConfirm = async () => {
     if (busy) return;
     setBusy(true);
@@ -54,20 +53,30 @@ export function ExportPdfModal({ open, fileName, onConfirm, onClose }: ExportMod
   };
 
   return (
-    <div
-      className="export-modal-overlay"
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose();
-      }}
-    >
-      <div
-        className="export-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="export-modal-title"
-        ref={dialogRef}
-      >
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="export-modal-overlay"
+          role="presentation"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !busy) onClose();
+          }}
+        >
+          <motion.div
+            className="export-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-modal-title"
+            ref={dialogRef}
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+          >
         <div className="export-modal-inner">
           <div className="export-modal-header">
             <span className="export-modal-badge">md++</span>
@@ -109,7 +118,9 @@ export function ExportPdfModal({ open, fileName, onConfirm, onClose }: ExportMod
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+    )}
+  </AnimatePresence>
   );
 }

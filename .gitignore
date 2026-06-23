@@ -43,5 +43,4 @@ coverage/
 # Agent/IDE local state
 .omc/
 .omx/
-CLAUDE.md
 docs/

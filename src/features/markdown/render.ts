@@ -1,4 +1,4 @@
-import { md } from './plugins';
+import { md, createMarkdownItWithHtml } from './plugins';
 
 /**
  * 将 markdown 源文本渲染为 HTML。
@@ -19,4 +19,10 @@ import { md } from './plugins';
  */
 export function renderMarkdown(source: string): string {
   return md.render(source);
+}
+
+/** 用于修订模式：允许 HTML 标记（注释）通过，以注入高亮标记 */
+const mdHtml = createMarkdownItWithHtml();
+export function renderMarkdownWithHtml(source: string): string {
+  return mdHtml.render(source);
 }

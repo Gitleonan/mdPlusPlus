@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronUp } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useZenStore } from '../../stores/zenStore';
+import { countChangeSegments, useRevisionStore } from '../../stores/revisionStore';
 import { resolveImages } from '../../ipc/files';
 import { openExternalUrl, openLocalPath } from '../../ipc/opener';
 import { renderMermaidInContainer } from '../../features/markdown/mermaid';
@@ -9,6 +11,11 @@ import { injectAnchors } from '../../features/markdown/anchors';
 import { classifyLink, resolveLocalPath } from '../../features/markdown/links';
 import { useLightbox } from '../../hooks/useLightbox';
 import { smoothScrollTo } from '../../utils/smoothScroll';
+import { segmentHunks, groupChangeSegments } from '../../utils/diff';
+import { renderMarkdownWithHtml } from '../../features/markdown/render';
+import { highlightCodeBlocks } from '../../features/markdown/highlight';
+import { extractToc } from '../../features/markdown/toc';
+import type { RevisionHunk } from '../../types';
 
 interface ContentProps {
   contentRef?: React.RefObject<HTMLDivElement>;
@@ -189,6 +196,260 @@ function ZenHint() {
   );
 }
 
+
+/** 修订模式预览视图：分组渲染，新增内容红色字体，删除内容带删除线 */
+function RevisionPreview({
+  newSource,
+  oldSource,
+  filePath,
+  hunks,
+  onContentReady,
+}: {
+  newSource: string;
+  oldSource: string;
+  filePath: string;
+  hunks: RevisionHunk[];
+  onContentReady?: (el: HTMLElement) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [html, setHtml] = useState<string | null>(null);
+  const currentSegmentIndex = useRevisionStore((s) => s.currentSegmentIndex);
+  const currentRevisionId = useRevisionStore((s) => s.currentRevisionId);
+
+  useEffect(() => {
+    let cancelled = false;
+    const theme =
+      document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    (async () => {
+      try {
+        const segments = segmentHunks(hunks);
+        const changeGroups = groupChangeSegments(segments);
+        // 将每个段落渲染为 HTML；变更块外层带 id 锚点 + data-rev-seg
+        const parts: string[] = [];
+        segments.forEach((seg, segIdx) => {
+          if (seg.kind === 'unchanged') {
+            parts.push(renderMarkdownWithHtml(seg.source));
+            return;
+          }
+          // 该段属于第几个变更点
+          const groupIdx = changeGroups.findIndex(g => g.includes(segIdx));
+          const blockId = groupIdx >= 0 ? `rev-seg-${groupIdx}` : '';
+          const idAttr = blockId ? ` id="${blockId}" data-rev-seg="${groupIdx}"` : '';
+          const cls = seg.kind === 'added' ? 'rev-add' : 'rev-del';
+          parts.push(
+            `<div class="rev-block ${cls}"${idAttr}>${renderMarkdownWithHtml(seg.source)}</div>`,
+          );
+        });
+        const rendered = parts.join('\n');
+        const highlighted = await highlightCodeBlocks(rendered, theme);
+        if (!cancelled) setHtml(highlighted);
+      } catch (err) {
+        console.error('[RevisionPreview] render failed', err);
+        if (!cancelled) setHtml(`<p>渲染失败</p>`);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [newSource, oldSource, hunks]);
+
+  // DOM 注入后处理并滚动到第一个变更块
+  useEffect(() => {
+    if (!html || !containerRef.current) return;
+    const el = containerRef.current;
+    el.innerHTML = html;
+
+    // 注入锚点（用新版本 TOC）
+    const toc = extractToc(newSource);
+    injectAnchors(el, toc);
+
+    // 增强代码块
+    enhanceCodeBlocks(el);
+
+    // 图片和 Mermaid
+    Promise.all([
+      resolveImages(el, filePath),
+      renderMermaidInContainer(el),
+    ]).catch(console.error);
+
+    onContentReady?.(el);
+
+    // 自动滚动到当前变更块
+    const target = currentSegmentIndex >= 0
+      ? (el.querySelector(`#rev-seg-${currentSegmentIndex}`) as HTMLElement | null)
+      : null;
+    const firstChange = target ?? (el.querySelector('.rev-block') as HTMLElement | null);
+    if (firstChange) {
+      requestAnimationFrame(() => {
+        firstChange.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+  }, [html, filePath, newSource, hunks, onContentReady, currentSegmentIndex, currentRevisionId]);
+
+  if (!html) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner" />
+        <p className="loading-text">正在渲染修订预览…</p>
+      </div>
+    );
+  }
+
+  return (
+    <main className="md-content rev-preview" ref={containerRef} tabIndex={-1} />
+  );
+}
+
+/** 监听变更悬浮栏：光点状态 + 上一个/下一个导航 + 停止监听 */
+function MonitoringIndicator() {
+  const isRevisionMode = useRevisionStore((s) => s.isRevisionMode);
+  const revisions = useRevisionStore((s) => s.revisions);
+  const currentRevisionId = useRevisionStore((s) => s.currentRevisionId);
+  const currentSegmentIndex = useRevisionStore((s) => s.currentSegmentIndex);
+  const navigatePrev = useRevisionStore((s) => s.navigatePrev);
+  const navigateNext = useRevisionStore((s) => s.navigateNext);
+  const disableRevisionMode = useRevisionStore((s) => s.disableRevisionMode);
+
+  const currentRevision = revisions.find((r) => r.id === currentRevisionId) ?? null;
+
+  if (!isRevisionMode) return null;
+
+  const revIndex = revisions.findIndex((r) => r.id === currentRevisionId);
+  const segTotal = currentRevision ? countChangeSegments(currentRevision.hunks) : 0;
+  // 是否处于可导航的最末/最前（跨 revision）
+  const atFirst = revIndex <= 0 && currentSegmentIndex <= 0;
+  const atLast = revIndex >= revisions.length - 1 && currentSegmentIndex >= segTotal - 1;
+
+  const addedCount = currentRevision?.hunks.filter((h) => h.type === 'added').length ?? 0;
+  const removedCount = currentRevision?.hunks.filter((h) => h.type === 'removed').length ?? 0;
+  const hasChanges = segTotal > 0;
+
+  const btn = (delay: number) => ({ duration: 0.4, ease: [0.32, 0.72, 0, 1] as [number, number, number, number], delay });
+
+  return (
+    <motion.div
+      className="monitoring-indicator"
+      initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
+      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
+      transition={{ duration: 0.55, ease: [0.32, 0.72, 0, 1] }}
+    >
+      {/* 光点状态胶囊 */}
+      <span className="monitoring-pill">
+        <span className="monitoring-dot-wrap">
+          {/* 外圈扩散涟漪 */}
+          <motion.span
+            className="monitoring-dot-ripple"
+            animate={{ scale: [1, 2.2], opacity: [0.5, 0] }}
+            transition={{ duration: 2.6, ease: [0.32, 0.72, 0, 1], repeat: Infinity }}
+          />
+          {/* 内核呼吸光点 */}
+          <motion.span
+            className="monitoring-dot"
+            animate={{ scale: [1, 1.45, 1], opacity: [0.55, 1, 0.55] }}
+            transition={{ duration: 2.6, ease: [0.32, 0.72, 0, 1], repeat: Infinity }}
+          />
+        </span>
+      </span>
+
+      {/* 变更统计 */}
+      <AnimatePresence>
+        {hasChanges && (
+          <motion.span
+            className="monitoring-stats"
+            initial={{ opacity: 0, x: -8, filter: 'blur(2px)' }}
+            animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, x: -8, filter: 'blur(2px)' }}
+            transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
+          >
+            {addedCount > 0 && <span className="rev-summary-added">+{addedCount}</span>}
+            <span className="monitoring-stats-sep" />
+            {removedCount > 0 && <span className="rev-summary-removed">-{removedCount}</span>}
+          </motion.span>
+        )}
+      </AnimatePresence>
+
+      {/* 分隔线 */}
+      <AnimatePresence>
+        {hasChanges && (
+          <motion.span
+            className="monitoring-divider"
+            initial={{ opacity: 0, scaleY: 0 }}
+            animate={{ opacity: 1, scaleY: 1 }}
+            exit={{ opacity: 0, scaleY: 0 }}
+            transition={btn(0.05)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* 上一个 */}
+      <motion.button
+        type="button"
+        className="monitoring-btn"
+        disabled={atFirst}
+        onClick={navigatePrev}
+        title="上一个变更"
+        initial={{ opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -6 }}
+        transition={btn(0.1)}
+        whileHover={!atFirst ? { scale: 1.05 } : undefined}
+        whileTap={!atFirst ? { scale: 0.94 } : undefined}
+      >
+        ← 上一个
+      </motion.button>
+
+      {/* 计数：当前变更点 / 该 revision 变更点总数 */}
+      <AnimatePresence>
+        {hasChanges && (
+          <motion.span
+            className="monitoring-count"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={btn(0.15)}
+          >
+            {currentSegmentIndex + 1}/{segTotal}
+          </motion.span>
+        )}
+      </AnimatePresence>
+
+      {/* 下一个 */}
+      <motion.button
+        type="button"
+        className="monitoring-btn"
+        disabled={atLast}
+        onClick={navigateNext}
+        title="下一个变更"
+        initial={{ opacity: 0, x: 6 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 6 }}
+        transition={btn(0.2)}
+        whileHover={!atLast ? { scale: 1.05 } : undefined}
+        whileTap={!atLast ? { scale: 0.94 } : undefined}
+      >
+        下一个 →
+      </motion.button>
+
+      {/* 停止监听 */}
+      <motion.button
+        type="button"
+        className="monitoring-btn monitoring-btn-danger"
+        onClick={disableRevisionMode}
+        title="停止监听"
+        initial={{ opacity: 0, x: 6 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 6 }}
+        transition={btn(0.25)}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.94 }}
+      >
+        ✕
+      </motion.button>
+    </motion.div>
+  );
+}
+
 export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
   // 仅订阅会改变渲染结果的字段，避免滚动时 setScrollTop 触发本组件重渲染——
   // 否则下面的 useEffect 会因为 tab 引用变化重新跑，把 el.innerHTML 重置一次，
@@ -199,6 +460,13 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
   const tabIsLoading = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isLoading ?? false);
   const setScrollTop = useTabsStore((s) => s.setScrollTop);
   const isZen = useZenStore((s) => s.isZen);
+
+	// 修订模式状态
+	const isRevisionMode = useRevisionStore(s => s.isRevisionMode);
+	const currentRevision = useRevisionStore(s =>
+		s.revisions.find(r => r.id === s.currentRevisionId) ?? null,
+	);
+
   const internalRef = useRef<HTMLDivElement>(null);
   const ref = contentRef || internalRef;
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -212,14 +480,18 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
     // 通过 getState 读取，避免把 tab 整体写进 deps 而被滚动期间的引用刷新带歪。
     const tab = useTabsStore.getState().tabs.find((t) => t.id === tabId);
     if (!tab) return;
-    const el = ref.current;
-    el.innerHTML = tab.html;
+	    const el = ref.current;
+	    el.innerHTML = tab.html;
 
-    // 恢复滚动位置时，短暂屏蔽 scroll 事件，防止 setScrollTop 覆盖刚恢复的值
-    let restoring = true;
-    el.scrollTop = tab.scrollTop;
-    setShowBackToTop(el.scrollTop > 300);
-    requestAnimationFrame(() => { restoring = false; });
+	    // 恢复滚动位置时，短暂屏蔽 scroll 事件，防止 setScrollTop 覆盖刚恢复的值
+	    // 延迟到 rAF 确保浏览器完成布局后再设置 scrollTop
+	    let restoring = true;
+	    requestAnimationFrame(() => {
+	      el.scrollTop = tab.scrollTop;
+	      setShowBackToTop(el.scrollTop > 300);
+	      // 再延迟一帧清除 restoring，避免 scroll 事件覆盖
+	      requestAnimationFrame(() => { restoring = false; });
+	    });
 
     // 注入锚点 ID
     injectAnchors(el, tab.toc);
@@ -312,18 +584,78 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
       el.removeEventListener('click', onLinkClick);
       imgHandlers.forEach((fn) => fn());
     };
-  }, [
-    tabId,
-    tabHtml,
-    tabIsLoading,
-    setScrollTop,
-    ref,
-    onActiveHeadingChange,
-  ]);
+		}, [
+		    tabId,
+		    tabHtml,
+		    tabIsLoading,
+		    setScrollTop,
+		    ref,
+		    onActiveHeadingChange,
+		    isRevisionMode, // 修复 Bug 3: 从修订模式切回预览时需重新填充 innerHTML
+		    currentRevision?.id, // 修复 Bug 2: 拒绝修订后 currentRevision 变为 null 时重新填充
+		  ]);
 
   if (!tabId || (tabHtml == null && !tabIsLoading)) return null;
+
+  // 修订模式 + 有当前修订：渲染新版本的 HTML 预览（而非原始 diff 文本）
+  if (isRevisionMode && currentRevision) {
+    const tab = useTabsStore.getState().tabs.find((t) => t.id === tabId);
+    return (
+      <div className="content-shell">
+        <MonitoringIndicator />
+        <RevisionPreview
+          newSource={currentRevision.newSource}
+          oldSource={currentRevision.oldSource}
+          filePath={tab?.filePath ?? ''}
+          hunks={currentRevision.hunks}
+          onContentReady={(el) => {
+            // 图片点击 Lightbox
+            const open = useLightbox.getState().open;
+            el.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+              if (img.closest('a')) return;
+              img.addEventListener('click', () => open(img.src));
+            });
+            // 链接点击拦截
+            const onLinkClick = (e: MouseEvent) => {
+              const target =
+                e.target instanceof Element
+                  ? e.target
+                  : e.target instanceof Node
+                    ? e.target.parentElement
+                    : null;
+              const a = target?.closest('a');
+              if (!a) return;
+              const href = a.getAttribute('href');
+              if (!href) return;
+              const link = classifyLink(href);
+              if (link.kind === 'anchor') return;
+              e.preventDefault();
+              if (link.kind === 'external') {
+                openExternalUrl(link.url).catch(console.error);
+                return;
+              }
+              if (link.kind === 'mdFile' || link.kind === 'localFile') {
+                const resolved = resolveLocalPath(tab?.filePath ?? '', link.path);
+                if (link.kind === 'mdFile') {
+                  useTabsStore.getState().openTab(resolved).catch(console.error);
+                } else {
+                  openLocalPath(resolved).catch(console.error);
+                }
+              }
+            };
+            el.addEventListener('click', onLinkClick);
+          }}
+        />
+        <div className="word-count-badge">字数 {countMarkdownWords(currentRevision.newSource)}</div>
+        {isZen && <ZenHint />}
+      </div>
+    );
+  }
+
+  // 正常模式 / 修订模式无修订：保持原有结构，useEffect 正常填充 innerHTML
   return (
     <div className="content-shell">
+      <MonitoringIndicator />
       {tabIsLoading ? (
         <div className="loading-container">
           <div className="loading-spinner" />
@@ -340,14 +672,18 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
           />
           <div className="word-count-badge">字数 {countMarkdownWords(tabSource ?? '')}</div>
           {isZen && <ZenHint />}
-          <button
-            className={`back-to-top ${showBackToTop ? 'visible' : ''}`}
+          <motion.button
+            className="back-to-top"
+            initial={false}
+            animate={showBackToTop ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            style={{ pointerEvents: showBackToTop ? 'auto' : 'none' }}
             onClick={handleBackToTop}
             title="回到顶部"
             aria-label="回到顶部"
           >
             <ChevronUp size={16} strokeWidth={1.5} />
-          </button>
+          </motion.button>
         </>
       )}
     </div>

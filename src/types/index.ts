@@ -23,3 +23,20 @@ export interface RecentFile {
 }
 
 export type ThemeMode = 'light' | 'dark' | 'system';
+
+/** 行级 diff 单元 */
+export interface RevisionHunk {
+  type: 'added' | 'removed' | 'unchanged';
+  content: string;       // 该行内容
+  oldLineNo?: number;    // 旧文件行号（removed / unchanged）
+  newLineNo?: number;    // 新文件行号（added / unchanged）
+}
+
+/** 单次修订记录 */
+export interface Revision {
+  id: string;
+  timestamp: number;
+  oldSource: string;      // 变更前的完整源码
+  newSource: string;      // 变更后的完整源码
+  hunks: RevisionHunk[];  // 行级 diff 结果
+}

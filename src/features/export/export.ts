@@ -88,51 +88,78 @@ export async function exportPdf(el: HTMLElement, theme: 'light' | 'dark', fileNa
 }
 
 /**
- * 用 hidden iframe + window.print() 触发系统打印。
+ * 用主窗口 window.print() + @media print CSS 触发系统打印。
  *
- * 为什么不调用主窗口的 window.print()：那样会把 TitleBar / Sidebar /
- * SearchBar 一起塞进 PDF。打印 iframe 的好处是 iframe 内的 document
- * 是一个干净的 HTML 文档，只有我们注入的内容和样式。
+ * macOS 的 WKWebView 不支持 iframe.contentWindow.print()（静默失败），
+ * 因此改为在主文档中注入一个 .print-overlay 容器，用 @media print CSS
+ * 隐藏所有 UI 元素（TitleBar / Sidebar / SearchBar），只保留要打印的内容。
  *
- * 注意：在 jsdom 测试环境里 iframe.contentWindow.print 不存在，
- * 用 buildStandaloneHtml 的可注入性来做替身验证（见 export.test.ts）。
+ * 流程：
+ * 1. 注入 <style id="print-overlay-style"> 定义 @media print 规则
+ * 2. 注入 <div class="print-overlay"> 包含渲染好的独立 HTML 内容
+ * 3. 调用 window.print() 触发系统打印对话框
+ * 4. 监听 afterprint 事件清理注入的元素
  */
 async function printDocumentToPdf(options: ExportDocumentOptions): Promise<void> {
-  const html = buildStandaloneHtml(options.element.innerHTML, PRINT_CSS, options.theme);
+  const contentHtml = buildStandaloneHtml(options.element.innerHTML, PRINT_CSS, options.theme);
 
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText =
-    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
-  document.body.appendChild(iframe);
+  // 提取 <body> 内的 HTML（跳过外层 html/head/body 标签）
+  const bodyMatch = contentHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const innerHtml = bodyMatch ? bodyMatch[1] : options.element.innerHTML;
+
+  // 提取 <style> 块
+  const styleMatches = contentHtml.match(/<style>([\s\S]*?)<\/style>/gi) || [];
+  const combinedStyle = styleMatches
+    .map((s) => s.replace(/<\/?style>/gi, ''))
+    .join('\n');
+
+  // 注入 @media print 样式：隐藏一切，只显示 .print-overlay
+  const printStyle = document.createElement('style');
+  printStyle.id = 'print-overlay-style';
+  printStyle.textContent = `
+    @media print {
+      body > *:not(.print-overlay) { display: none !important; }
+      .print-overlay {
+        position: static !important;
+        width: auto !important;
+        height: auto !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+      }
+    }
+    ${combinedStyle}
+  `;
+  document.head.appendChild(printStyle);
+
+  // 注入打印内容容器
+  const overlay = document.createElement('div');
+  overlay.className = 'print-overlay';
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:99999;background:#fff;overflow:auto;padding:40px 32px;';
+  overlay.innerHTML = `<div class="md-content" style="max-width:860px;margin:0 auto;">${innerHtml}</div>`;
+  document.body.appendChild(overlay);
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      const onLoad = () => {
-        iframe.removeEventListener('load', onLoad);
-        const win = iframe.contentWindow;
-        if (!win) {
-          reject(new Error('打印窗口未就绪'));
-          return;
-        }
-        // 等下一帧让浏览器把 KaTeX / shiki / mermaid SVG 都布好版
-        requestAnimationFrame(() => {
-          try {
-            win.focus();
-            win.print();
-            resolve();
-          } catch (err) {
-            reject(err instanceof Error ? err : new Error(String(err)));
-          }
-        });
+    await new Promise<void>((resolve) => {
+      const cleanup = () => {
+        window.removeEventListener('afterprint', cleanup);
+        overlay.remove();
+        printStyle.remove();
+        resolve();
       };
-      iframe.addEventListener('load', onLoad);
-      // 用 srcdoc 注入而不是 document.write，避免被 CSP / 沙盒拦
-      iframe.srcdoc = html;
+      window.addEventListener('afterprint', cleanup);
+
+      // 等下一帧让浏览器把 KaTeX / shiki / mermaid SVG 都布好版
+      requestAnimationFrame(() => {
+        window.print();
+        // 兜底：如果 afterprint 未触发（某些 WebView），3 秒后清理
+        setTimeout(cleanup, 3000);
+      });
     });
-  } finally {
-    // 给打印对话框一点缓冲再清理 iframe，否则部分浏览器会取消打印任务
-    setTimeout(() => iframe.remove(), 1000);
+  } catch {
+    // 异常时也要清理
+    overlay.remove();
+    printStyle.remove();
   }
 }
 
