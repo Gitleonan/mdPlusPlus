@@ -17,6 +17,8 @@
 
 **md++** is a fast, lightweight **Markdown viewer and reader** built with [Tauri v2](https://tauri.app) (Rust + React). Open `.md` files instantly on **Windows** or **macOS** — no heavy editors needed.
 
+In the era of **Vibe Coding**, AI-generated code is everywhere — and so are `.md` files: requirements documents, architecture designs, API specs, PRDs. You need to check them constantly, but launching VS Code or a browser every time is overkill. **md++** fills that gap — a distraction-free Markdown viewer that stays out of your way.
+
 **Highlights:** Full Markdown rendering (KaTeX math, Mermaid diagrams, shiki code highlighting), multi-tab browsing, TOC navigation, full-text search, PDF/HTML export, dark/light themes, file-watching auto-reload, Zen focus mode, and **file monitoring** — watch external file changes and visualize content diffs in real time.
 
 [📥 Download](https://github.com/Gitleonan/easy-md/releases) · [🐛 Report Issue](https://github.com/Gitleonan/easy-md/issues) · [💬 Discussions](https://github.com/Gitleonan/easy-md/discussions)
@@ -96,7 +98,7 @@ React 18 + TS    ── Render pipeline / UI / State management / Business logic
 | Scenario | Description |
 |----------|-------------|
 | **Quick Markdown preview** | Double-click `.md` files — no IDE required |
-| **Typora alternative** | Free, open-source, lightweight Markdown reader |
+| **Vibe Coding companion** | Browse AI-generated requirements, architecture docs, and PRDs on the fly |
 | **Windows Markdown viewer** | Native Windows app (not Electron); low memory footprint |
 | **macOS Markdown reader** | Native macOS support with `.dmg` installation |
 | **Technical docs** | KaTeX math + Mermaid diagrams + syntax-highlighted code |

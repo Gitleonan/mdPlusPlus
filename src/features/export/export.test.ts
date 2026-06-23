@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { save } from '@tauri-apps/plugin-dialog';
-import { writeFile } from '../../ipc/files';
+import { writeFile, getAppDataDir } from '../../ipc/files';
+import { openFileWithSystem } from '../../ipc/opener';
 import { buildStandaloneHtml, exportDocument } from './export';
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -9,16 +10,26 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 vi.mock('../../ipc/files', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
+  getAppDataDir: vi.fn().mockResolvedValue('/app/data'),
+}));
+
+vi.mock('../../ipc/opener', () => ({
+  openFileWithSystem: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe('export', () => {
   const saveMock = vi.mocked(save);
   const writeFileMock = vi.mocked(writeFile);
+  const openFileMock = vi.mocked(openFileWithSystem);
+  const getAppDataDirMock = vi.mocked(getAppDataDir);
 
   beforeEach(() => {
     saveMock.mockReset();
     writeFileMock.mockClear();
+    openFileMock.mockClear();
+    getAppDataDirMock.mockClear();
     saveMock.mockResolvedValue('C:\\out\\doc.html');
+    getAppDataDirMock.mockResolvedValue('/app/data');
     document.body.innerHTML = '';
   });
 
@@ -40,12 +51,9 @@ describe('export', () => {
     expect(html).toContain('katex');
   });
 
-  it('exports pdf via main window.print + overlay, not via saveDialog or rust', async () => {
+  it('exports pdf by saving html to app data dir and opening in browser', async () => {
     const root = document.createElement('div');
     root.innerHTML = '<h1>你好</h1><p>Hi</p>';
-
-    // jsdom 没实现 print，给 window.print 打桩
-    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {});
 
     await exportDocument({
       element: root,
@@ -55,15 +63,21 @@ describe('export', () => {
       format: 'pdf',
     });
 
+    // PDF export does NOT show a save dialog — writes to temp dir instead
     expect(saveMock).not.toHaveBeenCalled();
-    expect(writeFileMock).not.toHaveBeenCalled();
-    expect(printSpy).toHaveBeenCalledTimes(1);
 
-    // 验证 overlay 被注入后又清理了
-    expect(document.querySelector('.print-overlay')).toBeNull();
-    expect(document.getElementById('print-overlay-style')).toBeNull();
+    // Should write standalone HTML (with print CSS + auto-print script)
+    expect(writeFileMock).toHaveBeenCalledWith(
+      '/app/data/note.html',
+      expect.stringContaining('<!DOCTYPE html>'),
+    );
+    expect(writeFileMock).toHaveBeenCalledWith(
+      '/app/data/note.html',
+      expect.stringContaining('window.print()'),
+    );
 
-    printSpy.mockRestore();
+    // Should open the temp HTML in the default browser (via system cmd, not opener plugin)
+    expect(openFileMock).toHaveBeenCalledWith('/app/data/note.html');
   });
 
   it('exports markdown as a new md file', async () => {

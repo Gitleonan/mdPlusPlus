@@ -1,5 +1,6 @@
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '../../ipc/files';
+import { openFileWithSystem } from '../../ipc/opener';
 import themesCss from '../../styles/themes.css?raw';
 import proseCss from '../../styles/prose.css?raw';
 
@@ -51,6 +52,7 @@ export function buildStandaloneHtml(
     ${BASE_CSS}
     ${css}
     ${getActiveThemeCss()}
+    ${PRINT_CSS}
   </style>
 </head>
 <body class="md-content">${contentHtml}</body>
@@ -59,10 +61,23 @@ export function buildStandaloneHtml(
 
 export async function exportDocument(options: ExportDocumentOptions): Promise<string | null> {
   if (options.format === 'pdf') {
-    // PDF 不走 saveDialog 也不走 Rust：注入隐藏 iframe + 系统打印，
-    // 让用户在打印对话框里选"另存为 PDF"。这样 themes.css / prose.css /
-    // KaTeX / Mermaid SVG 全部按预览样式输出，而不是把 DOM 抠成纯文本。
-    await printDocumentToPdf(options);
+    // macOS WKWebView does not reliably support window.print() with @media
+    // print overlays — the print dialog shows the app UI rather than exported
+    // content.  Instead, generate standalone HTML, save it as a temp file, and
+    // open it in the user's default browser where "Save as PDF" works natively
+    // on every platform.
+    const html = buildStandaloneHtml(options.element.innerHTML, '', options.theme);
+    // Inject an auto-print script so the browser's print dialog opens on load
+    const printHtml = html.replace(
+      '</head>',
+      '<script>window.addEventListener("DOMContentLoaded",()=>{setTimeout(()=>window.print(),400)});</script></head>',
+    );
+    // Write to a temp .html file (not .pdf) so the OS opens it in a browser
+    const tmpPath = await getTempExportPath(options.fileName);
+    await writeFile(tmpPath, printHtml);
+    // Ask the OS to open the HTML file in the default browser (bypassing
+    // opener plugin ACL — the temp dir isn't in the plugin's allowlist)
+    await openFileWithSystem(tmpPath);
     return null;
   }
 
@@ -77,6 +92,18 @@ export async function exportDocument(options: ExportDocumentOptions): Promise<st
   return path;
 }
 
+/** 生成临时导出文件路径（在 app data dir 下，避免权限问题） */
+async function getTempExportPath(fileName: string): Promise<string> {
+  const { getAppDataDir } = await import('../../ipc/files');
+  const dir = await getAppDataDir();
+  const base = replaceExtension(fileName, 'html');
+  // 替换路径分隔符避免子目录
+  const safe = base.replace(/[/\\]/g, '_');
+  // 路径拼接：在 Linux 沙盒中 app_data_dir 返回的路径已规范化
+  const sep = dir.endsWith('/') || dir.endsWith('\\') ? '' : '/';
+  return `${dir}${sep}${safe}`;
+}
+
 export async function exportPdf(el: HTMLElement, theme: 'light' | 'dark', fileName = 'document.md'): Promise<string | null> {
   return exportDocument({
     element: el,
@@ -87,81 +114,6 @@ export async function exportPdf(el: HTMLElement, theme: 'light' | 'dark', fileNa
   });
 }
 
-/**
- * 用主窗口 window.print() + @media print CSS 触发系统打印。
- *
- * macOS 的 WKWebView 不支持 iframe.contentWindow.print()（静默失败），
- * 因此改为在主文档中注入一个 .print-overlay 容器，用 @media print CSS
- * 隐藏所有 UI 元素（TitleBar / Sidebar / SearchBar），只保留要打印的内容。
- *
- * 流程：
- * 1. 注入 <style id="print-overlay-style"> 定义 @media print 规则
- * 2. 注入 <div class="print-overlay"> 包含渲染好的独立 HTML 内容
- * 3. 调用 window.print() 触发系统打印对话框
- * 4. 监听 afterprint 事件清理注入的元素
- */
-async function printDocumentToPdf(options: ExportDocumentOptions): Promise<void> {
-  const contentHtml = buildStandaloneHtml(options.element.innerHTML, PRINT_CSS, options.theme);
-
-  // 提取 <body> 内的 HTML（跳过外层 html/head/body 标签）
-  const bodyMatch = contentHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const innerHtml = bodyMatch ? bodyMatch[1] : options.element.innerHTML;
-
-  // 提取 <style> 块
-  const styleMatches = contentHtml.match(/<style>([\s\S]*?)<\/style>/gi) || [];
-  const combinedStyle = styleMatches
-    .map((s) => s.replace(/<\/?style>/gi, ''))
-    .join('\n');
-
-  // 注入 @media print 样式：隐藏一切，只显示 .print-overlay
-  const printStyle = document.createElement('style');
-  printStyle.id = 'print-overlay-style';
-  printStyle.textContent = `
-    @media print {
-      body > *:not(.print-overlay) { display: none !important; }
-      .print-overlay {
-        position: static !important;
-        width: auto !important;
-        height: auto !important;
-        overflow: visible !important;
-        background: #ffffff !important;
-      }
-    }
-    ${combinedStyle}
-  `;
-  document.head.appendChild(printStyle);
-
-  // 注入打印内容容器
-  const overlay = document.createElement('div');
-  overlay.className = 'print-overlay';
-  overlay.style.cssText =
-    'position:fixed;inset:0;z-index:99999;background:#fff;overflow:auto;padding:40px 32px;';
-  overlay.innerHTML = `<div class="md-content" style="max-width:860px;margin:0 auto;">${innerHtml}</div>`;
-  document.body.appendChild(overlay);
-
-  try {
-    await new Promise<void>((resolve) => {
-      const cleanup = () => {
-        window.removeEventListener('afterprint', cleanup);
-        overlay.remove();
-        printStyle.remove();
-        resolve();
-      };
-      window.addEventListener('afterprint', cleanup);
-
-      // 等下一帧让浏览器把 KaTeX / shiki / mermaid SVG 都布好版
-      requestAnimationFrame(() => {
-        window.print();
-        // 兜底：如果 afterprint 未触发（某些 WebView），3 秒后清理
-        setTimeout(cleanup, 3000);
-      });
-    });
-  } catch {
-    // 异常时也要清理
-    overlay.remove();
-    printStyle.remove();
-  }
-}
 
 function buildExportContent(options: ExportDocumentOptions): string {
   if (options.format === 'markdown') return options.source;
