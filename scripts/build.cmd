@@ -1,127 +1,139 @@
 @echo off
-chcp 65001 >nul
 setlocal enabledelayedexpansion
 
-:: 先切到仓库根目录
 cd /d "%~dp0.."
 
 echo ========================================
-echo   MD++ 打包构建脚本
+echo   MD++ Build Script
 echo ========================================
 echo.
 
-:: 读取当前 package.json 版本号
+:: read current version from package.json
 for /f %%v in ('node -p "require('./package.json').version"') do set PKG_VER=%%v
 
-echo 当前版本: !PKG_VER!
+echo Current version: !PKG_VER!
 echo.
 
-:: 询问版本号
-set /p INPUT_VER="请输入要发布的版本号 (直接回车使用 !PKG_VER!): "
+set /p INPUT_VER="Enter release version (press Enter to use !PKG_VER!): "
 if "!INPUT_VER!"=="" set INPUT_VER=!PKG_VER!
 
 echo.
 echo ========================================
-echo 即将构建 MD++ v!INPUT_VER!
-echo 目标: msi + nsis 安装包
+echo Building MD++ v!INPUT_VER!
+echo Targets: nsis + msi
 echo ========================================
 echo.
 
-set /p CONFIRM="确认构建? (y/N): "
+set /p CONFIRM="Confirm build? (y/N): "
 if /i not "!CONFIRM!"=="y" (
-  echo 已取消构建。
+  echo Build cancelled.
+  pause
   exit /b 0
 )
 
+:: ============================================
+:: Step 1: Sync version
+:: ============================================
 echo.
-echo [1/4] 同步版本号...
+echo [1/3] Syncing version (source: package.json)...
 
-:: 用 node 更新版本号（避免 PowerShell ConvertTo-Json 破坏编码）
 if not "!INPUT_VER!"=="!PKG_VER!" (
-  echo   更新 package.json: !PKG_VER! -^> !INPUT_VER!
+  echo   Updating package.json: !PKG_VER! -^> !INPUT_VER!
   node -e "const fs=require('fs'),p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version='!INPUT_VER!';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\r\n')"
 )
 
-:: 同步 tauri.conf.json 版本号
-node -e "const fs=require('fs'),t=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json','utf8'));t.version='!INPUT_VER!';fs.writeFileSync('src-tauri/tauri.conf.json',JSON.stringify(t,null,2)+'\r\n')"
-echo   已同步 tauri.conf.json 版本号: !INPUT_VER!
-
-:: 同步 Cargo.toml 版本号
 call pnpm sync-version
 if %ERRORLEVEL% neq 0 (
-  echo   版本同步失败! 错误码: %ERRORLEVEL%
+  echo   ERROR: Version sync failed!
+  pause
   exit /b %ERRORLEVEL%
 )
-echo   已同步 Cargo.toml 版本号: !INPUT_VER!
+echo   All files synced to v!INPUT_VER!
 
-echo [2/4] 清理旧的构建产物...
-if exist "src-tauri\target\release\bundle\msi" rmdir /s /q "src-tauri\target\release\bundle\msi" 2>nul
-if exist "src-tauri\target\release\wix"      rmdir /s /q "src-tauri\target\release\wix"      2>nul
+:: ============================================
+:: Step 2: Build app + NSIS installer
+:: ============================================
+echo.
+echo [2/3] Building app + NSIS installer...
 
-echo [3/4] 编译 Rust 后端 + 前端...
-call pnpm build
-if %ERRORLEVEL% neq 0 (
-  echo   前端构建失败!
-  exit /b %ERRORLEVEL%
+:: clean old nsis output to avoid conflicts
+if exist "src-tauri\target\release\bundle\nsis" rmdir /s /q "src-tauri\target\release\bundle\nsis" 2>nul
+if exist "src-tauri\target\release\nsis" rmdir /s /q "src-tauri\target\release\nsis" 2>nul
+
+:: Tauri builds frontend + Rust + NSIS in one go
+call pnpm tauri build --bundles nsis
+set BUILD_ERR=%ERRORLEVEL%
+
+:: check if NSIS output exists regardless of exit code
+set OUT_NSIS=
+for %%f in ("src-tauri\target\release\bundle\nsis\*.exe") do set OUT_NSIS=%%f
+if "!OUT_NSIS!"=="" (
+  for %%f in ("src-tauri\target\release\bundle\nsis\*setup*.exe") do set OUT_NSIS=%%f
 )
-echo   前端构建成功。
 
-echo   编译 Rust 后端 (release)...
-cargo build --release --manifest-path src-tauri\Cargo.toml
-if %ERRORLEVEL% neq 0 (
-  echo   Rust 编译失败!
-  exit /b %ERRORLEVEL%
-)
-echo   Rust 编译成功。
-
-echo [4/4] 打包 MSI 安装包...
-
-:: 找到 WiX 工具路径
-set WIX_DIR=%LOCALAPPDATA%\tauri\WixTools314
-if not exist "%WIX_DIR%\light.exe" (
-  echo   错误: 找不到 WiX 工具! 请安装 Tauri CLI 后重试。
-  echo   路径: %WIX_DIR%\light.exe
+if "!OUT_NSIS!"=="" (
+  echo   ERROR: NSIS build failed (exit code: %BUILD_ERR%).
+  echo   No .exe found in bundle\nsis\
+  pause
   exit /b 1
 )
+echo   NSIS: !OUT_NSIS!
 
-:: 生成 WiX 文件 (tauri bundler 的 candle/light 前置步骤)
-:: 先用 tauri build --bundles 仅编译不打包
-:: 然后手动运行 candle + light
+:: ============================================
+:: Step 3: Build MSI installer (manual WiX)
+:: ============================================
+echo.
+echo [3/3] Building MSI installer...
+
+set WIX_DIR=%LOCALAPPDATA%\tauri\WixTools314
+if not exist "%WIX_DIR%\light.exe" (
+  echo   WiX tools not found at %WIX_DIR%\light.exe
+  echo   Skipping MSI. Install Tauri CLI to enable MSI builds.
+  goto :done
+)
+
 set BUNDLE_DIR=src-tauri\target\release
 set WIX_SRC=%BUNDLE_DIR%\wix\x64
 
-echo   正在准备 WiX 源文件...
-:: 调用 Tauri 生成 WiX 配置（candle + light 文件）
-call pnpm tauri build --bundles msi 2>&1 | findstr /v "failed light.exe"
+:: clean old wix output
+if exist "%BUNDLE_DIR%\wix" rmdir /s /q "%BUNDLE_DIR%\wix" 2>nul
+if exist "%BUNDLE_DIR%\bundle\msi" rmdir /s /q "%BUNDLE_DIR%\bundle\msi" 2>nul
 
-:: 如果上面失败（WiX 步骤失败），我们手动构建 MSI
-if not exist "%WIX_SRC%\main.wixobj" (
-  echo   Tauri 未生成 .wixobj，尝试直接通过 cargo-bundle...
+:: let Tauri generate WiX source files (app already built, this is fast)
+echo   Generating WiX source files...
+call pnpm tauri build --bundles msi >nul 2>&1
 
-  :: 使用 tauri-bundler 或手动 candle
-  if exist "%WIX_SRC%\main.wxs" (
-    echo   运行 candle.exe...
-    "%WIX_DIR%\candle.exe" -arch x64 -dBuildVersion="!INPUT_VER!" -out "%WIX_SRC%\" "%WIX_SRC%\main.wxs"
-    if %ERRORLEVEL% neq 0 (
-      echo   candle 失败!
-      exit /b %ERRORLEVEL%
-    )
-  ) else (
-    echo   错误: 找不到 main.wxs!
-    exit /b 1
-  )
+if not exist "%WIX_SRC%\main.wxs" (
+  echo   ERROR: main.wxs not generated. Skipping MSI.
+  goto :done
 )
 
-:: 修复 locale.wxl 的 codepage（中文需要 936 而非 1252）
+:: patch desktop shortcut to use ProductIcon explicitly
+echo   Patching desktop shortcut icon...
+node scripts\patch-wxs.mjs "%WIX_SRC%\main.wxs" 2>nul
+
+:: ensure output dir exists and no stale .wixobj
+if not exist "%WIX_SRC%" mkdir "%WIX_SRC%"
+if exist "%WIX_SRC%\main.wixobj" del "%WIX_SRC%\main.wixobj"
+
+:: run candle.exe (compile .wxs -> .wixobj)
+echo   Running candle.exe...
+"%WIX_DIR%\candle.exe" -arch x64 -dBuildVersion="!INPUT_VER!" -out "%WIX_SRC%\\" "%WIX_SRC%\main.wxs"
+if %ERRORLEVEL% neq 0 (
+  echo   ERROR: candle.exe failed!
+  pause
+  exit /b %ERRORLEVEL%
+)
+
+:: fix locale codepage for Chinese (936 instead of 1252)
 set WXL=%WIX_SRC%\locale.wxl
 if exist "%WXL%" (
-  echo   修复 WiX locale codepage 为 936 (支持中文)...
-  powershell -NoProfile -Command ^
-    "$xml=[xml](Get-Content '%WXL%');$xml.WixLocalization.Codepage='936';$xml.WixLocalization.SelectSingleNode('//*[local-name()=""String"" and @Id=""TauriCodepage""]').InnerText='936';$xml.Save('%WXL%')"
+  echo   Fixing locale codepage to 936...
+  node scripts\fix-locale.mjs "%WXL%" 2>nul
 )
 
-:: 运行 light.exe 生成 MSI
-echo   运行 light.exe 生成 MSI...
+:: run light.exe (link .wixobj -> .msi)
+echo   Running light.exe...
 set OUT_MSI=%BUNDLE_DIR%\bundle\msi\md++_!INPUT_VER!_x64_en-US.msi
 if not exist "%BUNDLE_DIR%\bundle\msi" mkdir "%BUNDLE_DIR%\bundle\msi"
 
@@ -132,15 +144,22 @@ if not exist "%BUNDLE_DIR%\bundle\msi" mkdir "%BUNDLE_DIR%\bundle\msi"
   "%WIX_SRC%\main.wixobj"
 
 if %ERRORLEVEL% neq 0 (
-  echo.
-  echo   light.exe 打包失败! 错误码: %ERRORLEVEL%
+  echo   ERROR: light.exe failed!
+  pause
   exit /b %ERRORLEVEL%
 )
+echo   MSI: %OUT_MSI%
 
+:: ============================================
+:: Done
+:: ============================================
+:done
 echo.
 echo ========================================
-echo   构建完成! 版本: v!INPUT_VER!
-echo   MSI: %OUT_MSI%
+echo   Build complete: v%INPUT_VER%
+if not "!OUT_NSIS!"=="" echo   NSIS: !OUT_NSIS!
+if exist "%OUT_MSI%"           echo   MSI:  %OUT_MSI%
 echo ========================================
 
+pause
 endlocal
