@@ -4,9 +4,32 @@ mod watcher;
 use tauri::Emitter;
 use watcher::WatcherState;
 
+/// 从 argv 中提取 .md / .markdown 文件路径（跳过 argv[0] 即 exe 路径）。
+fn collect_md_files(args: Vec<String>) -> Vec<String> {
+    args.into_iter()
+        .skip(1)
+        .filter(|a| a.ends_with(".md") || a.ends_with(".markdown"))
+        .collect()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // 单实例：必须第一个注册。第二次启动时拦截，把 argv 转发给已运行实例，新进程自动退出。
+    // 仅桌面端启用（移动端不支持），cfg(not(mobile)) 与 Cargo.toml 里的桌面端依赖声明一致。
+    #[cfg(not(mobile))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            let files = collect_md_files(argv);
+            if !files.is_empty() {
+                // 已运行实例的前端早已挂载监听，可直接 emit，无需延迟
+                let _ = app.emit("open-on-startup", &files);
+            }
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -21,13 +44,8 @@ pub fn run() {
                 )?;
             }
 
-            // 解析命令行参数：把传入的 .md/.markdown 文件通过事件发给前端
-            let args: Vec<String> = std::env::args().collect();
-            let startup_files: Vec<String> = args
-                .into_iter()
-                .skip(1)
-                .filter(|a| a.ends_with(".md") || a.ends_with(".markdown"))
-                .collect();
+            // 首次启动：解析命令行参数，把传入的 .md/.markdown 文件通过事件发给前端
+            let startup_files = collect_md_files(std::env::args().collect());
             if !startup_files.is_empty() {
                 // 延迟一点确保前端已挂载监听
                 let handle = app.handle().clone();

@@ -35,3 +35,8 @@ tokio = { version = "1", features = ["time"] }
 windows = { version = "0.61", features = [
   "Win32_UI_Shell",
 ] }
+
+# 单实例：桌面端拦截第二次启动，把 argv 转发给已运行实例，新进程自动退出。
+# 仅桌面端需要（移动端不支持），cfg(any(...)) 与代码里的 #[cfg(not(mobile))] 对齐。
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"
