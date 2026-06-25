@@ -22,6 +22,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# file:// URL → 本地路径解析（macOS 通过 Apple Event 传入的文件路径是 URL 形式）
+url = "2.5"
 log = "0.4"
 tauri-plugin-log = "2"
 notify = "6"

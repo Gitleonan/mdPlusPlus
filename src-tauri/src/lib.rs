@@ -1,7 +1,7 @@
 mod commands;
 mod watcher;
 
-use tauri::Emitter;
+use tauri::{Emitter, RunEvent};
 use watcher::WatcherState;
 
 /// 从 argv 中提取 .md / .markdown 文件路径（跳过 argv[0] 即 exe 路径）。
@@ -11,6 +11,22 @@ fn collect_md_files(args: Vec<String>) -> Vec<String> {
         .filter(|a| a.ends_with(".md") || a.ends_with(".markdown"))
         .collect()
 }
+
+/// 把 macOS Apple Event 传来的 file:// URL 转成本地路径，并只保留 .md / .markdown。
+/// macOS 访达打开文件时，文件路径以 `file://...%20...` 形式经 `application:openURLs:`
+/// 传入，既不在 argv 里，也需要 percent-decode 才能拿到真实路径。
+fn urls_to_md_paths(urls: Vec<url::Url>) -> Vec<String> {
+    urls.into_iter()
+        .filter(|u| u.scheme() == "file")
+        .filter_map(|u| u.to_file_path().ok())
+        .filter(|p| {
+            let s = p.to_string_lossy();
+            s.ends_with(".md") || s.ends_with(".markdown")
+        })
+        .map(|p| p.to_string_lossy().to_string())
+        .collect()
+}
+
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -74,6 +90,25 @@ pub fn run() {
             commands::recent::add_recent,
             watcher::watch_files,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // macOS：访达双击打开 .md 时，文件路径经 Apple Event
+            // `application:openURLs:` 传入，既不在 argv 里（导致 argv 方案失效），
+            // 也需把 file:// URL 解析为本地路径。这里统一捕获并转发给前端。
+            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+            if let RunEvent::Opened { urls } = event {
+                let files = urls_to_md_paths(urls);
+                if !files.is_empty() {
+                    // 已运行实例的前端早已挂载监听；冷启动时前端可能尚未就绪，
+                    // 延迟一小段以覆盖两种情形（前端 openTab 按路径去重，重复也无害）。
+                    let handle = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        let _ = handle.emit("open-on-startup", &files);
+                    });
+                }
+            }
+            let _ = app_handle; // 非 macOS 平台占位，避免未使用告警
+        });
 }
