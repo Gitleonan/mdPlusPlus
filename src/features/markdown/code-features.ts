@@ -31,9 +31,14 @@ export function setupCodeBlockTitle(md: MarkdownIt): void {
     // 构建代码块 HTML
     let html = '';
 
-    // 处理行标记
-    const lines = token.content.split('\n');
-    const lineMarks = parseLineMarks(lines);
+	    // 解析行标记
+	    const rawLines = token.content.split('\n');
+	    // markdown-it 的 fence token.content 末尾固定带一个 \n，
+	    // 去掉 split 产生的空串，避免 cleanContent 末尾多出空行
+	    if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') {
+	      rawLines.pop();
+	    }
+	    const lineMarks = parseLineMarks(rawLines);
 
     // 将行标记序列化为 data 属性，供高亮后注入样式
     const marksAttr = lineMarks.length > 0
@@ -47,10 +52,10 @@ export function setupCodeBlockTitle(md: MarkdownIt): void {
       html += `<div class="code-block-wrapper"${marksAttr}>\n`;
     }
 
-    // 移除标记注释，生成干净的代码（支持 // 和 # 风格）
-    const cleanContent = lines
-      .map((line) => line.replace(/\s*(?:\/\/|#)\s*\[!code\s+(highlight|focus|error|warning|\+\+|--)\]\s*$/, ''))
-      .join('\n');
+	    // 移除标记注释，生成干净的代码（支持 // 和 # 风格）
+	    const cleanContent = rawLines
+	      .map((line) => line.replace(/\s*(?:\/\/|#)\s*\[!code\s+(highlight|focus|error|warning|\+\+|--)\]\s*$/, ''))
+	      .join('\n');
 
     // 生成带语言的代码块
     const langClass = lang ? ` class="language-${lang}"` : '';
