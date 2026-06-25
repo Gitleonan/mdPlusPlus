@@ -9,7 +9,22 @@ async function getHL(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
       themes: ['github-light', 'github-dark'],
-      langs: ['typescript', 'javascript', 'bash', 'json', 'markdown', 'rust', 'python'],
+	    langs: [
+	      'typescript', 'javascript', 'bash', 'json', 'markdown', 'rust', 'python',
+	      // 常用文档语言，按需添加避免 bundle 膨胀
+	      'sql',           // SQL / MySQL / PostgreSQL
+	      'shellscript',   // shell / sh / bash / zsh
+	      'css',           // CSS
+	      'html',          // HTML
+	      'xml',           // XML
+	      'yaml',          // YAML
+	      'toml',          // TOML
+	      'diff',          // Diff
+	      'dockerfile',    // Dockerfile
+	      'ini',           // INI / properties / conf
+	      'java',          // Java
+	      'go',            // Go
+	    ],
       engine: createJavaScriptRegexEngine(),
     });
   }
@@ -98,25 +113,24 @@ export async function highlightCodeBlocks(html: string, theme: ThemeName): Promi
     if (!lang) return fullMatch;
     if (lang === 'mermaid') return fullMatch;
 
-    const code = decodeHtmlEntities(encoded);
-    try {
-      const loaded = hl.getLoadedLanguages();
-      if (!loaded.includes(lang)) {
-        return fullMatch.replace(
-          /<pre><code(?:\s+class="language-[\w-]+")?>/,
-          `<pre class="shiki"><code class="language-${lang}">`,
-        );
-      }
-      const shikiResult = hl.codeToHtml(code, { lang, theme: themes[theme] });
-      // 保留 data-line-marks 属性
-      const patchedWrapper = fullMatch.replace(/<pre><code(?:\s+class="language-[\w-]+")?>[\s\S]*?<\/code><\/pre>/, shikiResult);
+	    const code = decodeHtmlEntities(encoded);
+	    try {
+	      // 不先用 getLoadedLanguages() 过滤：shiki 内部会解析语言别名
+	      //（如 shell → shellscript, zsh → shellscript），提前过滤反而误杀
+	      const shikiResult = hl.codeToHtml(code, { lang, theme: themes[theme] });
+	      // 去除 shiki 自带的 background-color（inline style 会覆盖 prose.css 的 --code-bg），
+	      // 让所有代码块统一使用 CSS 变量定义的背景色
+	      const noBgResult = shikiResult.replace(
+	        /\bbackground-color:\s*[^;"]+;?\s*/g,
+	        '',
+	      );
+	      // 保留 data-line-marks 属性
+	      const patchedWrapper = fullMatch.replace(/<pre><code(?:\s+class="language-[\w-]+")?>[\s\S]*?<\/code><\/pre>/, noBgResult);
       return patchedWrapper;
-    } catch {
-      return fullMatch.replace(
-        /<pre><code(?:\s+class="language-[\w-]+")?>/,
-        `<pre class="shiki"><code>`,
-      );
-    }
+	    } catch {
+	      // 高亮失败时直接返回原样，不再加 pre.shiki 确保现有样式（行号/背景）仍然正确
+	      return fullMatch;
+	    }
   });
 
   // 在 shiki 生成 .line 之后注入行标记样式

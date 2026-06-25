@@ -7,6 +7,17 @@ function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+/** 追踪每个滚动容器的活跃动画 ID，新动画自动取消旧动画 */
+const activeAnimations = new WeakMap<HTMLElement, number>();
+
+function cancelAnimation(element: HTMLElement): void {
+  const id = activeAnimations.get(element);
+  if (id != null) {
+    cancelAnimationFrame(id);
+    activeAnimations.delete(element);
+  }
+}
+
 /**
  * 平滑滚动到指定位置
  * @param element 滚动容器
@@ -18,6 +29,9 @@ export function smoothScrollTo(
   top: number,
   duration = 200,
 ): void {
+  // 取消该容器上正在进行的动画，防止多个动画竞争
+  cancelAnimation(element);
+
   const start = element.scrollTop;
   const delta = top - start;
   if (Math.abs(delta) < 1) return;
@@ -31,11 +45,15 @@ export function smoothScrollTo(
     element.scrollTop = start + delta * eased;
 
     if (progress < 1) {
-      requestAnimationFrame(step);
+      const id = requestAnimationFrame(step);
+      activeAnimations.set(element, id);
+    } else {
+      activeAnimations.delete(element);
     }
   }
 
-  requestAnimationFrame(step);
+  const id = requestAnimationFrame(step);
+  activeAnimations.set(element, id);
 }
 
 /**

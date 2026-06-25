@@ -65,11 +65,15 @@ export function clearHighlights(root: HTMLElement): void {
   root.normalize();
 }
 
-/** 聚焦第 index 个匹配项（滚动到视图 + 高亮） */
-export function focusMatch(marks: HTMLElement[], index: number): void {
+/** 聚焦第 index 个匹配项（滚动到视图 + 高亮）
+ * @param marks 所有匹配的 mark 元素数组
+ * @param index 目标匹配项索引
+ * @param container 可选，显式指定滚动容器（推荐传入，避免 findScrollParent 误匹配到内部可滚动元素）
+ */
+export function focusMatch(marks: HTMLElement[], index: number, container?: HTMLElement | null): void {
   marks.forEach((m, i) => m.classList.toggle(MARK_CURRENT_CLASS, i === index));
   const mark = marks[index];
   if (!mark) return;
 
-  smoothScrollToElement(mark, null, 'center');
+  smoothScrollToElement(mark, container, 'center');
 }

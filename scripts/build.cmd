@@ -20,7 +20,7 @@ if "!INPUT_VER!"=="" set INPUT_VER=!PKG_VER!
 echo.
 echo ========================================
 echo Building MD++ v!INPUT_VER!
-echo Targets: nsis + msi
+echo Targets: nsis
 echo ========================================
 echo.
 
@@ -35,7 +35,7 @@ if /i not "!CONFIRM!"=="y" (
 :: Step 1: Sync version
 :: ============================================
 echo.
-echo [1/3] Syncing version (source: package.json)...
+echo [1/2] Syncing version (source: package.json)...
 
 if not "!INPUT_VER!"=="!PKG_VER!" (
   echo   Updating package.json: !PKG_VER! -^> !INPUT_VER!
@@ -54,7 +54,7 @@ echo   All files synced to v!INPUT_VER!
 :: Step 2: Build app + NSIS installer
 :: ============================================
 echo.
-echo [2/3] Building app + NSIS installer...
+echo [2/2] Building app + NSIS installer...
 
 :: clean old nsis output to avoid conflicts
 if exist "src-tauri\target\release\bundle\nsis" rmdir /s /q "src-tauri\target\release\bundle\nsis" 2>nul
@@ -72,83 +72,19 @@ if "!OUT_NSIS!"=="" (
 )
 
 if "!OUT_NSIS!"=="" (
+  echo.
   echo   ERROR: NSIS build failed (exit code: %BUILD_ERR%).
   echo   No .exe found in bundle\nsis\
+  echo.
   pause
   exit /b 1
 )
-echo   NSIS: !OUT_NSIS!
 
-:: ============================================
-:: Step 3: Build MSI installer (manual WiX)
-:: ============================================
+:: resolve absolute path of the installer
+for %%I in ("!OUT_NSIS!") do set OUT_NSIS_ABS=%%~fI
+
 echo.
-echo [3/3] Building MSI installer...
-
-set WIX_DIR=%LOCALAPPDATA%\tauri\WixTools314
-if not exist "%WIX_DIR%\light.exe" (
-  echo   WiX tools not found at %WIX_DIR%\light.exe
-  echo   Skipping MSI. Install Tauri CLI to enable MSI builds.
-  goto :done
-)
-
-set BUNDLE_DIR=src-tauri\target\release
-set WIX_SRC=%BUNDLE_DIR%\wix\x64
-
-:: clean old wix output
-if exist "%BUNDLE_DIR%\wix" rmdir /s /q "%BUNDLE_DIR%\wix" 2>nul
-if exist "%BUNDLE_DIR%\bundle\msi" rmdir /s /q "%BUNDLE_DIR%\bundle\msi" 2>nul
-
-:: let Tauri generate WiX source files (app already built, this is fast)
-echo   Generating WiX source files...
-call pnpm tauri build --bundles msi >nul 2>&1
-
-if not exist "%WIX_SRC%\main.wxs" (
-  echo   ERROR: main.wxs not generated. Skipping MSI.
-  goto :done
-)
-
-:: patch desktop shortcut to use ProductIcon explicitly
-echo   Patching desktop shortcut icon...
-node scripts\patch-wxs.mjs "%WIX_SRC%\main.wxs" 2>nul
-
-:: ensure output dir exists and no stale .wixobj
-if not exist "%WIX_SRC%" mkdir "%WIX_SRC%"
-if exist "%WIX_SRC%\main.wixobj" del "%WIX_SRC%\main.wixobj"
-
-:: run candle.exe (compile .wxs -> .wixobj)
-echo   Running candle.exe...
-"%WIX_DIR%\candle.exe" -arch x64 -dBuildVersion="!INPUT_VER!" -out "%WIX_SRC%\\" "%WIX_SRC%\main.wxs"
-if %ERRORLEVEL% neq 0 (
-  echo   ERROR: candle.exe failed!
-  pause
-  exit /b %ERRORLEVEL%
-)
-
-:: fix locale codepage for Chinese (936 instead of 1252)
-set WXL=%WIX_SRC%\locale.wxl
-if exist "%WXL%" (
-  echo   Fixing locale codepage to 936...
-  node scripts\fix-locale.mjs "%WXL%" 2>nul
-)
-
-:: run light.exe (link .wixobj -> .msi)
-echo   Running light.exe...
-set OUT_MSI=%BUNDLE_DIR%\bundle\msi\md++_!INPUT_VER!_x64_en-US.msi
-if not exist "%BUNDLE_DIR%\bundle\msi" mkdir "%BUNDLE_DIR%\bundle\msi"
-
-"%WIX_DIR%\light.exe" ^
-  -ext "%WIX_DIR%\WixUIExtension.dll" ^
-  -loc "%WXL%" ^
-  -out "%OUT_MSI%" ^
-  "%WIX_SRC%\main.wixobj"
-
-if %ERRORLEVEL% neq 0 (
-  echo   ERROR: light.exe failed!
-  pause
-  exit /b %ERRORLEVEL%
-)
-echo   MSI: %OUT_MSI%
+echo   NSIS: !OUT_NSIS_ABS!
 
 :: ============================================
 :: Done
@@ -157,9 +93,30 @@ echo   MSI: %OUT_MSI%
 echo.
 echo ========================================
 echo   Build complete: v%INPUT_VER%
-if not "!OUT_NSIS!"=="" echo   NSIS: !OUT_NSIS!
-if exist "%OUT_MSI%"           echo   MSI:  %OUT_MSI%
+if not "!OUT_NSIS_ABS!"=="" (
+  echo.
+  echo   Output: !OUT_NSIS_ABS!
+)
 echo ========================================
+echo.
+echo Press ENTER to open the output folder, or ESC to exit...
 
-pause
+:: 用 PowerShell 读取单次按键：Enter -> exit 0, Escape -> exit 1, 其它 -> exit 2
+powershell -NoProfile -Command "$k=[Console]::ReadKey($true).Key; if($k -eq 'Enter'){exit 0}elseif($k -eq 'Escape'){exit 1}else{exit 2}" >nul 2>&1
+set KEY_ERR=!ERRORLEVEL!
+
+if "!KEY_ERR!"=="0" goto open_folder
+if "!KEY_ERR!"=="1" goto end
+echo Unrecognized key, ignoring.
+goto end
+
+:open_folder
+if not "!OUT_NSIS_ABS!"=="" (
+  explorer.exe /select,"!OUT_NSIS_ABS!"
+  echo Folder opened.
+) else (
+  echo No output file to open.
+)
+
+:end
 endlocal

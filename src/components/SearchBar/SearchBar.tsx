@@ -50,7 +50,7 @@ export function SearchBar({ contentRef }: SearchBarProps) {
       const total = highlightMatches(el, keyword);
       if (total > 0) {
         const marks = Array.from(el.querySelectorAll<HTMLElement>('mark.search-mark'));
-        focusMatch(marks, 0);
+        focusMatch(marks, 0, el);
         setResult(total, 0);
       } else {
         setResult(0, 0);
@@ -63,7 +63,7 @@ export function SearchBar({ contentRef }: SearchBarProps) {
     const el = contentRef.current;
     if (!el || total === 0) return;
     const marks = Array.from(el.querySelectorAll<HTMLElement>('mark.search-mark'));
-    focusMatch(marks, current);
+    focusMatch(marks, current, el);
   }, [current, total, contentRef]);
 
   const clearKeyword = () => {
