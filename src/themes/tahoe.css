@@ -4,46 +4,50 @@
  * macOS 原生优化的阅读体验：
  * - SF Pro Display + SF Pro Text + SF Mono 系统字体链
  * - macOS 大标题/标题排版体系，适配系统字体渲染
- * - 亮色页面 + 深色代码块（Xcode Dark 风格），暗色滚动条与悬浮按钮
- * - Liquid Glass 毛玻璃质感
+ * - 浅色系页面 + 浅色代码块（Liquid Glass 质感），代码块左侧 macOS 交通灯圆点
+ * - 毛玻璃引用块、暗色滚动条与悬浮按钮
  * - 仅作用于 .md-content / .code-block-*，不污染其他预设
  */
 
-/* ── CSS 变量：亮色模式 ───────────────────── */
+/* ── CSS 变量：亮色模式（浅色系） ───────────────────── */
 :root {
-  --bg: #eef2fa;
-  --bg-secondary: #e4eaf5;
-  --surface-raised: rgba(255, 255, 255, 0.82);
-  --fg: #1a2744;
-  --fg-muted: #5e6d8a;
+  /* ── Surface：通透暖白 ── */
+  --bg: #f5f7fb;
+  --bg-secondary: #eaeef6;
+  --surface-raised: rgba(255, 255, 255, 0.86);
+  --fg: #1b2238;
+  --fg-muted: #5a6483;
   --accent: #2563eb;
   --accent-soft: rgba(37, 99, 235, 0.08);
   --accent-hover: #1d4ed8;
-  --border: rgba(0, 0, 0, 0.07);
+  --border: rgba(20, 30, 60, 0.08);
 
-  /* ── 代码块：Xcode Dark 风格深色底 ── */
-  --code-bg: #1e2235;
-  --code-inline-bg: rgba(37, 99, 235, 0.1);
-  --code-inline-fg: #2563eb;
-  --code-inline-border: rgba(37, 99, 235, 0.15);
-  --code-line-number: rgba(200, 210, 235, 0.6);
-  --code-line-divider: rgba(255, 255, 255, 0.06);
-  --code-line-highlight: rgba(255, 255, 255, 0.06);
-  --code-line-error: rgba(255, 100, 120, 0.12);
-  --code-line-warning: rgba(255, 200, 60, 0.12);
-  --code-line-diff-add: rgba(80, 220, 160, 0.12);
-  --code-line-diff-add-symbol: #50dca0;
-  --code-line-diff-remove: rgba(255, 100, 120, 0.12);
-  --code-line-diff-remove-symbol: #ff6478;
+  /* ── 代码块：浅色玻璃底（Liquid Glass） ── */
+  --code-bg: #fbfcfe;
+  --code-bg-soft: rgba(255, 255, 255, 0.7);
+  --code-inline-bg: rgba(37, 99, 235, 0.09);
+  --code-inline-fg: #1d4ed8;
+  --code-inline-border: rgba(37, 99, 235, 0.16);
+  --code-line-number: rgba(60, 72, 110, 0.42);
+  --code-line-divider: rgba(20, 30, 60, 0.07);
+  --code-line-highlight: rgba(234, 179, 8, 0.16);
+  --code-line-error: rgba(244, 63, 94, 0.1);
+  --code-line-warning: rgba(234, 179, 8, 0.1);
+  --code-line-diff-add: rgba(16, 185, 129, 0.12);
+  --code-line-diff-add-symbol: #18794e;
+  --code-line-diff-remove: rgba(244, 63, 94, 0.12);
+  --code-line-diff-remove-symbol: #b8272c;
+  /* 交通灯圆点（macOS 经典三色，SVG 矢量抗锯齿） */
+  --traffic-lights: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='12' viewBox='0 0 52 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23ff5f57'/%3E%3Ccircle cx='26' cy='6' r='6' fill='%23febc2e'/%3E%3Ccircle cx='46' cy='6' r='6' fill='%2328c840'/%3E%3C/svg%3E");
 
   --mark-linear-color: #7db0ff;
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.07);
-  --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.09);
+  --shadow-sm: 0 1px 2px rgba(20, 30, 60, 0.04), 0 1px 3px rgba(20, 30, 60, 0.03);
+  --shadow-md: 0 4px 16px rgba(20, 30, 60, 0.06), 0 1px 3px rgba(20, 30, 60, 0.04);
+  --shadow-lg: 0 16px 48px rgba(20, 30, 60, 0.09), 0 2px 8px rgba(20, 30, 60, 0.05);
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
-  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-bg: rgba(255, 255, 255, 0.62);
   --glass-border: rgba(255, 255, 255, 0.7);
   --glass-blur: 20px;
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
@@ -64,20 +68,23 @@
   --accent-hover: #8db4ff;
   --border: rgba(255, 255, 255, 0.06);
 
-  /* 暗色模式：代码块略亮于背景 */
+  /* 暗色模式：代码块略亮于背景，仍偏玻璃质感 */
   --code-bg: #141a30;
+  --code-bg-soft: rgba(28, 34, 58, 0.7);
   --code-inline-bg: rgba(107, 154, 255, 0.1);
   --code-inline-fg: #6b9aff;
   --code-inline-border: rgba(107, 154, 255, 0.15);
-  --code-line-number: rgba(220, 226, 240, 0.55);
+  --code-line-number: rgba(220, 226, 240, 0.5);
   --code-line-divider: rgba(255, 255, 255, 0.06);
-  --code-line-highlight: rgba(255, 255, 255, 0.05);
-  --code-line-error: rgba(255, 100, 120, 0.15);
-  --code-line-warning: rgba(255, 200, 60, 0.15);
-  --code-line-diff-add: rgba(80, 220, 160, 0.15);
-  --code-line-diff-add-symbol: #50dca0;
-  --code-line-diff-remove: rgba(255, 100, 120, 0.15);
-  --code-line-diff-remove-symbol: #ff6478;
+  --code-line-highlight: rgba(234, 179, 8, 0.22);
+  --code-line-error: rgba(244, 63, 94, 0.15);
+  --code-line-warning: rgba(234, 179, 8, 0.15);
+  --code-line-diff-add: rgba(16, 185, 129, 0.15);
+  --code-line-diff-add-symbol: #3dd68c;
+  --code-line-diff-remove: rgba(244, 63, 94, 0.15);
+  --code-line-diff-remove-symbol: #f66f81;
+  /* 暗色下交通灯略降饱和，避免在深底上过亮刺眼 */
+  --traffic-lights: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='52' height='12' viewBox='0 0 52 12'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23ff6459'/%3E%3Ccircle cx='26' cy='6' r='6' fill='%23ffc233'/%3E%3Ccircle cx='46' cy='6' r='6' fill='%2334d058'/%3E%3C/svg%3E");
 
   --mark-linear-color: #2b5090;
   --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.3);
@@ -224,72 +231,115 @@
 }
 
 /* ════════════════════════════════════════════════════════════════
-   代码块：Xcode Dark 风格
+   代码块：浅色 Liquid Glass + macOS 交通灯
    ════════════════════════════════════════════════════════════════ */
 
-/* ── 覆盖 Shiki github-light 内联色 → github-dark 色调 ── */
+/*
+ * 浅色代码块沿用 github-light 的 Shiki 配色，不再强制覆盖为深色。
+ * 仅统一默认文本色，让未命中 token 的字符也落在浅色基调上。
+ */
 .md-content pre.shiki,
 .md-content pre.shiki code {
-  color: #abb2bf !important;
+  color: #2f3a55;
 }
 .md-content pre.shiki .shiki span {
-  font-style: var(--shiki-dark-font-style) !important;
-  font-weight: var(--shiki-dark-font-weight) !important;
-  text-decoration: var(--shiki-dark-text-decoration) !important;
-  color: var(--shiki-dark) !important;
+  font-style: var(--shiki-font-style) !important;
+  font-weight: var(--shiki-font-weight) !important;
+  text-decoration: var(--shiki-text-decoration) !important;
+  color: var(--shiki) !important;
 }
 
-/* ── macOS 交通灯圆点 ── */
+/* ── 代码块容器：Double-Bezel 嵌套架构 ── */
+/* 外层 shell：磨砂托盘 + 极淡边线，承载交通灯与圆角 */
+.md-content .code-block-wrapper {
+  position: relative;
+  margin: 22px 0;
+  padding: 0;
+  background: var(--code-bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow var(--t-color), border-color var(--t-color),
+    background var(--t-color);
+}
+
+.md-content .code-block-wrapper:hover {
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+  box-shadow: var(--shadow-lg);
+}
+
+/* 内层 pre：真正的代码区，自带细微高光内描边 */
+.md-content .code-block-wrapper pre {
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ── macOS 交通灯圆点（左侧）── */
+/* 三个圆点横向排布于代码块左上角，带柔和外发光，模拟 macOS 窗口控件 */
 .md-content .code-block-wrapper:not(.has-title):not(.line-numbers-mode)::before {
   content: "";
   position: absolute;
-  top: 14px;
+  top: 13px;
   left: 16px;
   z-index: 5;
   width: 52px;
-  height: 10px;
+  height: 12px;
   pointer-events: none;
-  background:
-    radial-gradient(circle 5px at 0 50%, #ff5f57 100%, transparent 0),
-    radial-gradient(circle 5px at 18px 50%, #febc2e 100%, transparent 0),
-    radial-gradient(circle 5px at 36px 50%, #28c840 100%, transparent 0);
+  background: var(--traffic-lights) no-repeat center / contain;
+  filter: drop-shadow(0 0 2px rgba(20, 30, 60, 0.1));
+  transition: filter var(--t-color);
 }
 
-/* ── 代码块容器：macOS 阴影 + 圆角 ── */
-.md-content .code-block-wrapper {
-  margin: 20px 0;
-  border-radius: 10px;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
-  transition: box-shadow var(--t-color);
+/* 带标题的代码块：交通灯移到标题栏左侧 */
+.md-content .code-block-wrapper.has-title::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  z-index: 5;
+  width: 52px;
+  height: 12px;
+  pointer-events: none;
+  background: var(--traffic-lights) no-repeat center / contain;
+  filter: drop-shadow(0 0 2px rgba(20, 30, 60, 0.1));
 }
 
-.md-content .code-block-wrapper pre {
-  border-radius: 10px;
+/* 暗色模式：圆点发光略强，增强存在感 */
+:root[data-theme="dark"] .md-content .code-block-wrapper::before,
+:root[data-theme="dark"] .md-content .code-block-wrapper.has-title::before {
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.5));
 }
 
-/* 无标题代码块：为交通灯圆点让出空间 */
+/* 无标题代码块：为交通灯让出顶部空间 */
 .md-content .code-block-wrapper:not(.has-title):not(.line-numbers-mode) pre.shiki {
-  padding-top: 36px;
+  padding-top: 38px;
 }
 
+/* ── 带标题的代码块 ── */
 .md-content .code-block-wrapper.has-title {
-  border-radius: 10px;
+  border-radius: 14px;
   overflow: hidden;
-  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .md-content .code-block-wrapper.has-title pre {
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 14px 14px;
+  box-shadow: none;
 }
 
-/* ── 代码块标题：浅色文字在深色底上 ── */
+/* ── 代码块标题栏：浅色玻璃，为交通灯让出左侧空间 ── */
 .md-content .code-block-title {
-  color: #abb2bf;
+  position: relative;
+  padding: 10px 14px 10px 80px; /* 左侧 80px 给交通灯腾位 */
+  color: var(--fg-muted);
   background: var(--code-bg);
   border-bottom: 1px solid var(--code-line-divider);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
-/* ── 深色代码块内的系统滚动条 ── */
+/* ── 代码块内滚动条 ── */
 .md-content .code-block-wrapper pre::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -298,46 +348,69 @@
   background: transparent;
 }
 .md-content .code-block-wrapper pre::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(20, 30, 60, 0.16);
   border-radius: 3px;
 }
 .md-content .code-block-wrapper pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(20, 30, 60, 0.28);
+}
+:root[data-theme="dark"] .md-content .code-block-wrapper pre::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+:root[data-theme="dark"] .md-content .code-block-wrapper pre::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.22);
 }
 
-/* ── 复制按钮：深色半透明悬浮 ── */
+/* ── 复制按钮：浅色玻璃悬浮 ── */
 .md-content .code-block-copy {
-  background: rgba(30, 34, 53, 0.8);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.55);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  box-shadow: var(--shadow-sm);
+  border-radius: 999px;
   z-index: 11;
 }
 .md-content .code-block-copy:hover {
-  background: rgba(30, 34, 53, 0.95);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
 }
 .md-content .code-block-copy.copied {
   color: var(--accent);
   border-color: var(--accent);
-  background: rgba(37, 99, 235, 0.2);
+  background: var(--accent-soft);
+}
+:root[data-theme="dark"] .md-content .code-block-copy {
+  background: rgba(30, 34, 53, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+:root[data-theme="dark"] .md-content .code-block-copy:hover {
+  background: rgba(30, 34, 53, 0.95);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+:root[data-theme="dark"] .md-content .code-block-copy.copied {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(107, 154, 255, 0.2);
 }
 
-/* ── 语言标签 ── */
+/* ── 语言标签：右上角，避开交通灯 ── */
 .md-content .code-block-lang {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--fg-muted);
   font-weight: 500;
   letter-spacing: 0.06em;
+  opacity: 0.5;
 }
 .md-content .code-block-wrapper:hover .code-block-lang {
-  opacity: 0.8;
+  opacity: 0.7;
 }
 
-/* ── 行号在深色代码块上使用浅色 ── */
+/* ── 行号 ── */
 .md-content .line-numbers {
   color: var(--code-line-number);
   border-right: 1px solid var(--code-line-divider);
@@ -347,7 +420,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── 深色代码块的行高亮 / diff 颜色适配 ── */
+/* 行号模式下，交通灯不再显示（行号槽占据左侧），保持整洁 */
+.md-content .code-block-wrapper.line-numbers-mode:not(.has-title)::before {
+  display: none;
+}
+.md-content .code-block-wrapper.line-numbers-mode:not(.has-title) pre.shiki {
+  padding-top: 20px;
+}
+
+/* ── 代码行的行高亮 / diff 颜色适配 ── */
 .md-content pre.shiki .code-line-highlight {
   background: var(--code-line-highlight);
 }
