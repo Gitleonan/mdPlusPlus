@@ -247,7 +247,16 @@ body {
   -webkit-app-region: no-drag;
 }
 
-.titlebar-tabs::-webkit-scrollbar { display: none; }
+/* 横向滚动条：tab 过多时显示，单独压低高度避免撑高标题栏 */
+.titlebar-tabs::-webkit-scrollbar { height: 4px; }
+.titlebar-tabs::-webkit-scrollbar-track { background: transparent; }
+.titlebar-tabs::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--fg-muted) 35%, transparent);
+  border-radius: 2px;
+}
+.titlebar-tabs::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--fg-muted) 55%, transparent);
+}
 
 .titlebar-tab {
   display: flex;

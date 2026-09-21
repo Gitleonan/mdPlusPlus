@@ -1,7 +1,7 @@
 mod commands;
 mod watcher;
 
-use tauri::{Emitter, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 use watcher::WatcherState;
 
 /// 从 argv 中提取 .md / .markdown 文件路径（跳过 argv[0] 即 exe 路径）。
@@ -39,8 +39,25 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let files = collect_md_files(argv);
             if !files.is_empty() {
+                // 写入启动文件列表兜底：若前端还没挂好监听，emit 会丢，
+                // 前端挂载后的 get_startup_files 拉取能补上（两路靠 openTab 去重）
+                if let Some(state) = app.try_state::<commands::files::StartupFiles>() {
+                    state
+                        .0
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .extend(files.iter().cloned());
+                }
                 // 已运行实例的前端早已挂载监听，可直接 emit，无需延迟
                 let _ = app.emit("open-on-startup", &files);
+            }
+            // 程序已运行但不在前台时（如双击 .md 文件唤起），把窗口拉回前台，
+            // 否则文件会打开在后台不可见的窗口里。
+            // show + set_focus 适配最小化与"失焦未最小化"两种情况。
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
             }
         }));
     }
@@ -60,21 +77,18 @@ pub fn run() {
                 )?;
             }
 
-            // 首次启动：解析命令行参数，把传入的 .md/.markdown 文件通过事件发给前端
+            // 首次启动：把命令行传入的 .md/.markdown 存入状态，
+            // 前端挂载后主动拉取（替代定时 emit——webview 加载慢于定时时事件会丢）
             let startup_files = collect_md_files(std::env::args().collect());
-            if !startup_files.is_empty() {
-                // 延迟一点确保前端已挂载监听
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    let _ = handle.emit("open-on-startup", &startup_files);
-                });
-            }
+            app.manage(commands::files::StartupFiles(std::sync::Mutex::new(
+                startup_files,
+            )));
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::files::read_text_file,
+            commands::files::get_startup_files,
             commands::files::write_text_file,
             commands::files::resolve_image,
             commands::files::list_custom_themes,
@@ -100,6 +114,17 @@ pub fn run() {
             if let RunEvent::Opened { urls } = event {
                 let files = urls_to_md_paths(urls);
                 if !files.is_empty() {
+                    // 状态兜底：冷启动时前端可能尚未就绪，emit 会丢，
+                    // 挂载后的 get_startup_files 拉取能补上（两路靠 openTab 去重）
+                    if let Some(state) = app_handle
+                        .try_state::<commands::files::StartupFiles>()
+                    {
+                        state
+                            .0
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .extend(files.iter().cloned());
+                    }
                     // 已运行实例的前端早已挂载监听；冷启动时前端可能尚未就绪，
                     // 延迟一小段以覆盖两种情形（前端 openTab 按路径去重，重复也无害）。
                     let handle = app_handle.clone();

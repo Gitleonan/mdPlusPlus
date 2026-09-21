@@ -24,6 +24,9 @@ export function useFileWatcher() {
       const { isRevisionMode, snapshotSource, revisions, addRevision } =
         useRevisionStore.getState();
 
+      // 当前主题（正常模式与修订模式共用）
+      const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+
       if (isRevisionMode) {
         for (const path of changedPaths) {
           const tab = tabs.find(
@@ -44,7 +47,11 @@ export function useFileWatcher() {
             const hunks = computeLineDiff(baseline, newSource);
             addRevision(baseline, newSource, hunks);
 
-            // 不调用 updateSource，UI 通过 revisionStore 渲染 diff
+            // 同步刷新 tab 的源码、HTML 与 TOC：修订预览由 revisionStore 渲染 diff，
+            // 但侧边栏目录订阅 tab.toc，必须随最新内容更新；退出修订模式后也能直接显示最新内容
+            const toc = extractToc(newSource);
+            const html = await highlightCodeBlocks(renderMarkdown(newSource), theme);
+            updateSource(tab.id, newSource, html, toc);
           } catch (err) {
             console.error('revision reload failed', err);
           }
@@ -53,7 +60,6 @@ export function useFileWatcher() {
       }
 
       // --- 正常模式：直接刷新 ---
-      const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
       for (const path of changedPaths) {
         const tab = tabs.find(
           (t: { filePath: string }) => t.filePath === path || t.filePath === path.replace(/\//g, '\\'),
