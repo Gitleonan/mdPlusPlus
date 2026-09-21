@@ -172,4 +172,53 @@ describe('tabsStore', () => {
     expect(s.tabs.map((t) => t.filePath)).toEqual(['C:\\a.md', 'C:\\b.md']);
     expect(s.tabs.find((t) => t.id === s.activeTabId)?.filePath).toBe('C:\\b.md');
   });
+
+  it('restoreSession yields focus to a file opened by the user during restore', async () => {
+    localStorage.setItem(
+      'mdpp.openTabs.v1',
+      JSON.stringify({ paths: ['C:/a.md', 'C:/b.md'], activePath: 'C:/b.md' }),
+    );
+    // 第一次读取（恢复的第一个文件）拖慢，模拟恢复进行中收到二次启动转发
+    let reads = 0;
+    invokeMock.mockImplementation(async (command) => {
+      if (command === 'read_text_file') {
+        reads += 1;
+        if (reads === 1) await new Promise((r) => setTimeout(r, 30));
+        return '# Hello';
+      }
+      return undefined;
+    });
+
+    const restore = useTabsStore.getState().restoreSession();
+    await new Promise((r) => setTimeout(r, 10));
+    // 模拟单实例转发 / 双击打开新文件（用户主动打开）
+    await useTabsStore.getState().openTab('C:/new.md');
+    await restore;
+
+    const s = useTabsStore.getState();
+    expect(s.tabs.map((t) => t.fileName)).toEqual(['a.md', 'new.md', 'b.md']);
+    expect(s.tabs.find((t) => t.id === s.activeTabId)?.filePath).toBe('C:\\new.md');
+  });
+
+  it('restoreSession does not steal focus for a missing file tab', async () => {
+    localStorage.setItem(
+      'mdpp.openTabs.v1',
+      JSON.stringify({ paths: ['C:/a.md', 'C:/b.md'], activePath: 'C:/b.md' }),
+    );
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === 'read_text_file') {
+        const path = (args as { path?: string } | undefined)?.path ?? '';
+        if (path.includes('a.md')) throw new Error('读取文件失败: 系统找不到指定的文件。 (os error 2)');
+        return '# Hello';
+      }
+      return undefined;
+    });
+
+    await useTabsStore.getState().restoreSession();
+
+    const s = useTabsStore.getState();
+    const errorTab = s.tabs.find((t) => t.fileName === 'a.md');
+    expect(errorTab?.html).toContain('打开文件失败');
+    expect(s.tabs.find((t) => t.id === s.activeTabId)?.filePath).toBe('C:\\b.md');
+  });
 });
