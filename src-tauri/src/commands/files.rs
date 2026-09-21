@@ -1,12 +1,25 @@
 use base64::{engine::general_purpose, Engine as _};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::Manager;
+
+/// 首次启动时命令行传入的 .md/.markdown 文件。
+/// 前端挂载后通过 get_startup_files 主动拉取（取完即清），
+/// 替代"延迟 N 毫秒 emit"——emit 可能早于前端监听注册而丢失。
+pub struct StartupFiles(pub Mutex<Vec<String>>);
 
 /// 读取文件文本内容
 #[tauri::command]
 pub async fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("读取文件失败: {}", e))
+}
+
+/// 拉取并清空首次启动的文件列表（一次性消费）
+#[tauri::command]
+pub async fn get_startup_files(state: tauri::State<'_, StartupFiles>) -> Result<Vec<String>, String> {
+    let mut files = state.0.lock().map_err(|e| e.to_string())?;
+    Ok(std::mem::take(&mut *files))
 }
 
 /// 写入文件文本内容

@@ -21,6 +21,7 @@ import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import { useRevisionShortcuts } from './hooks/useRevisionShortcuts';
 import { useRevisionStore } from './stores/revisionStore';
 import { useFileWatcher } from './features/fileWatch/useFileWatcher';
+import { getStartupFiles } from './ipc/files';
 import { useRecentStore } from './stores/recentStore';
 import { useThemeStore } from './stores/themeStore';
 import { exportDocument, type ExportFormat } from './features/export/export';
@@ -80,6 +81,15 @@ export default function App() {
       for (const p of e.payload) await useTabsStore.getState().openTab(p);
     });
     return () => { unlisten.then((u) => u()); };
+  }, []);
+
+  // 前端挂载后主动拉取首次启动传入的文件（替代定时 emit，消除事件早于监听注册的竞态）
+  useEffect(() => {
+    getStartupFiles()
+      .then((paths) => {
+        for (const p of paths) useTabsStore.getState().openTab(p);
+      })
+      .catch((err) => console.error('[startup files] fetch failed', err));
   }, []);
 
   // 记录最近文件

@@ -5,6 +5,11 @@ export async function readFile(path: string): Promise<string> {
   return invoke<string>('read_text_file', { path });
 }
 
+/** 拉取并清空首次启动（命令行）传入的文件列表，一次性消费 */
+export async function getStartupFiles(): Promise<string[]> {
+  return invoke<string[]>('get_startup_files');
+}
+
 /** 解析图片路径，返回 data URL 或网络 URL */
 export async function resolveImage(mdFilePath: string, src: string): Promise<string> {
   return invoke<string>('resolve_image', { mdFilePath, src });

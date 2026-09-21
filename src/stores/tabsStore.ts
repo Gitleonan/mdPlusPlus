@@ -9,7 +9,8 @@ import { isMac } from '../utils/platform';
 interface TabsState {
   tabs: Tab[];
   activeTabId: string | null;
-  openTab: (filePath: string) => Promise<void>;
+  /** activate=false 用于会话恢复等批量打开：插入 tab 但不抢走当前 active */
+  openTab: (filePath: string, activate?: boolean) => Promise<void>;
   closeTab: (id: string) => void;
   closeTabsToLeft: (id: string) => void;
   closeTabsToRight: (id: string) => void;
@@ -23,6 +24,9 @@ interface TabsState {
 }
 
 let seq = 0;
+// 用户主动打开文件的计数：restoreSession 结束时用它判断恢复期间是否有
+// 用户（或二次启动转发）打开过文件 —— 有则让位，不再把 active 抢回旧会话的 tab。
+let userOpenCount = 0;
 const SESSION_KEY = 'mdpp.openTabs.v1';
 
 /**
@@ -114,7 +118,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   tabs: [],
   activeTabId: null,
 
-  async openTab(filePath) {
+  async openTab(filePath, activate = true) {
     console.log('[openTab] called with:', filePath);
     // Windows 路径归一化：统一使用反斜杠分隔符；macOS/Linux 保留正斜杠
     const normalized = isWindows() ? filePath.replace(/\//g, '\\') : filePath;
@@ -124,10 +128,15 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     );
     if (existing) {
       console.log('[openTab] file already open, switching to tab:', existing.id);
-      set({ activeTabId: existing.id });
+      if (activate) {
+        userOpenCount++;
+        set({ activeTabId: existing.id });
+      }
       return;
     }
-    // 先插入一个 loading 占位 tab，让用户立刻看到反馈
+    // 先插入一个 loading 占位 tab，让用户立刻看到反馈。
+    // activate=false（会话恢复）时不改变 activeTabId，避免恢复旧 tab 时
+    // 抢走用户刚通过双击/转发打开的文件的焦点。
     const placeholderId = `tab-${++seq}`;
     const fileName = normalized.split(/[/\\]/).pop() || normalized;
     const placeholder: Tab = {
@@ -141,17 +150,22 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       tocExpanded: {},
       isLoading: true,
     };
+    if (activate) userOpenCount++;
     set((s) => {
       const tabs = [...s.tabs, placeholder];
-      syncSessionAndWatcher(tabs, placeholderId);
-      return { tabs, activeTabId: placeholderId };
+      // 会话恢复不落盘 session，避免恢复过程中把上次会话的 activePath 覆盖掉；
+      // 恢复完成后由 setActive 统一写入
+      if (activate) syncSessionAndWatcher(tabs, placeholderId);
+      else syncWatcherFromTabs(tabs);
+      return { tabs, ...(activate ? { activeTabId: placeholderId } : {}) };
     });
     try {
       const tab = await buildTab(normalized);
       console.log('[openTab] tab built successfully:', tab.id, tab.fileName);
       set((s) => {
         const tabs = s.tabs.map((t) => (t.id === placeholderId ? { ...tab, id: placeholderId, isLoading: false } : t));
-        syncSessionAndWatcher(tabs, placeholderId);
+        if (activate) syncSessionAndWatcher(tabs, placeholderId);
+        else syncWatcherFromTabs(tabs);
         return { tabs };
       });
     } catch (err) {
@@ -164,7 +178,8 @@ export const useTabsStore = create<TabsState>((set, get) => ({
             ? { ...t, isLoading: false, html: `<div class="mermaid-error" role="note">打开文件失败：${errorMsg}</div>`, source: '' }
             : t
         ));
-        syncSessionAndWatcher(tabs, s.activeTabId);
+        if (activate) syncSessionAndWatcher(tabs, s.activeTabId);
+        else syncWatcherFromTabs(tabs);
         return { tabs };
       });
     }
@@ -277,13 +292,18 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     if (get().tabs.length > 0) return;
     const session = readSession();
     if (!session?.paths.length) return;
+    const userOpensBeforeRestore = userOpenCount;
     for (const path of session.paths) {
       try {
-        await get().openTab(path);
+        await get().openTab(path, false);
       } catch (err) {
         console.error('[restoreSession] failed to reopen', path, err);
       }
     }
+    // 恢复结束统一落盘一次（期间不再逐个覆盖 activePath）
+    saveSession(get().tabs, get().activeTabId);
+    // 恢复期间用户主动打开过文件（如二次启动转发、对话框选择），把焦点让给它
+    if (userOpenCount !== userOpensBeforeRestore) return;
     const normalizedActive = session.activePath ? normalizePathKey(session.activePath) : null;
     const active = normalizedActive
       ? get().tabs.find((t) => normalizePathKey(t.filePath) === normalizedActive)
