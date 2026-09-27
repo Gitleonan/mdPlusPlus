@@ -27,8 +27,10 @@ export const useRecentStore = create<RecentState>((set) => ({
           ...s.files.filter((f) => f.path !== path),
         ].slice(0, 20),
       }));
-    } catch {
-      // 忽略
+    } catch (err) {
+      // 失败不打断阅读，但必须留痕：这条 catch 曾经把「字段名不匹配导致
+      // add_recent 永远失败」这个 bug 藏了几个月
+      console.error('[recent] 记录最近文件失败', err);
     }
   },
 }));
