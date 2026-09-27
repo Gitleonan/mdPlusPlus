@@ -1,14 +1,14 @@
 # md++ — Lightweight Markdown Viewer
 
-> **md++** (easy-md) — A fast, lightweight Markdown viewer and reader for Windows & macOS. Open `.md` files instantly — no heavy editors needed. Built-in file monitoring mode captures external changes and visualizes content diffs in real time.
+> **md++** (mdPlusPlus) — A fast, lightweight Markdown viewer and reader for Windows & macOS. Open `.md` files instantly — no heavy editors needed. Built-in file monitoring mode captures external changes and visualizes content diffs in real time.
 
 > 🌐 [中文版本](./README.md)
 
 [![made with Tauri](https://img.shields.io/badge/made%20with-Tauri%20v2-orange)](https://tauri.app)
 [![React](https://img.shields.io/badge/frontend-React%2018%20%2B%20TS-blue)](https://react.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/Gitleonan/easy-md)](https://github.com/Gitleonan/easy-md/releases)
-[![GitHub Stars](https://img.shields.io/github/stars/Gitleonan/easy-md?style=social)](https://github.com/Gitleonan/easy-md)
+[![GitHub Release](https://img.shields.io/github/v/release/Gitleonan/mdPlusPlus)](https://github.com/Gitleonan/mdPlusPlus/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/Gitleonan/mdPlusPlus?style=social)](https://github.com/Gitleonan/mdPlusPlus)
 
 ---
 ![md++ Software Interface](assets/github-promo.png)
@@ -21,7 +21,7 @@ In the era of **Vibe Coding**, AI-generated code is everywhere — and so are `.
 
 **Highlights:** Full Markdown rendering (KaTeX math, Mermaid diagrams, shiki code highlighting), multi-tab browsing, TOC navigation, full-text search, PDF/HTML export, dark/light themes, file-watching auto-reload, Zen focus mode, and **file monitoring** — watch external file changes and visualize content diffs in real time.
 
-[📥 Download](https://github.com/Gitleonan/easy-md/releases) · [🐛 Report Issue](https://github.com/Gitleonan/easy-md/issues) · [💬 Discussions](https://github.com/Gitleonan/easy-md/discussions)
+[📥 Download](https://github.com/Gitleonan/mdPlusPlus/releases) · [🐛 Report Issue](https://github.com/Gitleonan/mdPlusPlus/issues) · [💬 Discussions](https://github.com/Gitleonan/mdPlusPlus/discussions)
 
 ### ✨ Features
 
@@ -125,8 +125,8 @@ React 18 + TS    ── Render pipeline / UI / State management / Business logic
 **Quick start**
 
 ```bash
-git clone https://github.com/Gitleonan/easy-md.git
-cd easy-md
+git clone https://github.com/Gitleonan/mdPlusPlus.git
+cd mdPlusPlus
 pnpm install
 pnpm tauri dev
 ```

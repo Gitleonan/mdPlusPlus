@@ -300,14 +300,20 @@ export const useTabsStore = create<TabsState>((set, get) => ({
         console.error('[restoreSession] failed to reopen', path, err);
       }
     }
-    // 恢复结束统一落盘一次（期间不再逐个覆盖 activePath）
-    saveSession(get().tabs, get().activeTabId);
-    // 恢复期间用户主动打开过文件（如二次启动转发、对话框选择），把焦点让给它
-    if (userOpenCount !== userOpensBeforeRestore) return;
+    // 恢复期间用户主动打开过文件（如二次启动转发、对话框选择、双击打开），
+    // 落盘当前状态后让位，不把 active 抢回旧会话的 tab
+    if (userOpenCount !== userOpensBeforeRestore) {
+      saveSession(get().tabs, get().activeTabId);
+      return;
+    }
+    // 恢复期间无人介入：选中旧会话的 active tab
     const normalizedActive = session.activePath ? normalizePathKey(session.activePath) : null;
     const active = normalizedActive
       ? get().tabs.find((t) => normalizePathKey(t.filePath) === normalizedActive)
       : null;
-    if (active) get().setActive(active.id);
+    // activePath 缺失或对应 tab 已不存在时兜底到最后一个 tab，
+    // 避免出现"标题栏有 tab、内容区却停在欢迎页"（activeTabId 保持 null）
+    const target = active ?? get().tabs[get().tabs.length - 1];
+    if (target) get().setActive(target.id);
   },
 }));

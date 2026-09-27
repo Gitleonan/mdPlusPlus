@@ -4,7 +4,7 @@ version = "0.3.1"
 description = "md++ — 轻量便捷的 Markdown 阅读器 (Windows / macOS)"
 authors = ["leonan"]
 license = "MIT"
-repository = "https://github.com/Gitleonan/easy-md"
+repository = "https://github.com/Gitleonan/mdPlusPlus"
 edition = "2021"
 rust-version = "1.77.2"
 
@@ -30,7 +30,6 @@ notify = "6"
 notify-debouncer-mini = "0.4"
 base64 = "0.22"
 dirs = "5"
-tokio = { version = "1", features = ["time"] }
 
 # Windows 文件关联：删除残留 UserChoice 后用 SHChangeNotify 刷新 Shell 关联与图标缓存。
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -1,14 +1,14 @@
 # md++ — 轻量 Markdown 阅读器
 
-> **md++** (easy-md) — 快速、轻量的 Markdown 阅读器，支持 Windows & macOS。双击 `.md` 即开即看，无需重型编辑器。内置文件监听模式，实时捕获外部修改并可视化展示内容变更。
+> **md++** (mdPlusPlus) — 快速、轻量的 Markdown 阅读器，支持 Windows & macOS。双击 `.md` 即开即看，无需重型编辑器。内置文件监听模式，实时捕获外部修改并可视化展示内容变更。
 
 > 🌐 [English Version](./README_EN.md)
 
 [![made with Tauri](https://img.shields.io/badge/made%20with-Tauri%20v2-orange)](https://tauri.app)
 [![React](https://img.shields.io/badge/frontend-React%2018%20%2B%20TS-blue)](https://react.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/Gitleonan/easy-md)](https://github.com/Gitleonan/easy-md/releases)
-[![GitHub Stars](https://img.shields.io/github/stars/Gitleonan/easy-md?style=social)](https://github.com/Gitleonan/easy-md)
+[![GitHub Release](https://img.shields.io/github/v/release/Gitleonan/mdPlusPlus)](https://github.com/Gitleonan/mdPlusPlus/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/Gitleonan/mdPlusPlus?style=social)](https://github.com/Gitleonan/mdPlusPlus)
 
 ---
 ![md++ 软件界面介绍图](assets/github-promo.png)
@@ -23,7 +23,7 @@ Windows 下也一直没有好用的 Markdown 预览工具。想快速看一眼 `
 
 **md++** 就是为了解决这个问题——一个轻量、纯粹的 Markdown 阅读器，双击文件即可预览，需要时也能快速编辑。**v0.3 新增的监听模式**，能像专业 diff 工具一样监听文件的外部变化、自动计算差异并可视化展示变更内容。
 
-[📥 下载](https://github.com/Gitleonan/easy-md/releases) · [🐛 报告问题](https://github.com/Gitleonan/easy-md/issues) · [💬 讨论](https://github.com/Gitleonan/easy-md/discussions)
+[📥 下载](https://github.com/Gitleonan/mdPlusPlus/releases) · [🐛 报告问题](https://github.com/Gitleonan/mdPlusPlus/issues) · [💬 讨论](https://github.com/Gitleonan/mdPlusPlus/discussions)
 
 ### ✨ 特性
 
@@ -81,7 +81,7 @@ Windows 下也一直没有好用的 Markdown 预览工具。想快速看一眼 `
 
 ### 📦 下载安装
 
-前往 [Releases](https://github.com/Gitleonan/easy-md/releases) 下载对应平台的安装包：
+前往 [Releases](https://github.com/Gitleonan/mdPlusPlus/releases) 下载对应平台的安装包：
 
 | 平台 | 格式 | 系统要求 |
 |------|------|----------|
@@ -136,8 +136,8 @@ React 18 + TS    ── 渲染管线 / UI / 状态管理 / 业务逻辑
 **启动开发**
 
 ```bash
-git clone https://github.com/Gitleonan/easy-md.git
-cd easy-md
+git clone https://github.com/Gitleonan/mdPlusPlus.git
+cd mdPlusPlus
 pnpm install
 pnpm tauri dev
 ```

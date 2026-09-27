@@ -221,4 +221,30 @@ describe('tabsStore', () => {
     expect(errorTab?.html).toContain('打开文件失败');
     expect(s.tabs.find((t) => t.id === s.activeTabId)?.filePath).toBe('C:\\b.md');
   });
+
+  it('restoreSession falls back to the last tab when the saved active path is gone', async () => {
+    localStorage.setItem(
+      'mdpp.openTabs.v1',
+      JSON.stringify({ paths: ['C:/a.md', 'C:/b.md'], activePath: 'C:/deleted.md' }),
+    );
+
+    await useTabsStore.getState().restoreSession();
+
+    const s = useTabsStore.getState();
+    expect(s.tabs.map((t) => t.fileName)).toEqual(['a.md', 'b.md']);
+    // 不能让 activeTabId 停在 null——那会在有 tab 的情况下显示欢迎页
+    expect(s.tabs.find((t) => t.id === s.activeTabId)?.filePath).toBe('C:\\b.md');
+  });
+
+  it('restoreSession keeps the last tab active when the session has no active path', async () => {
+    localStorage.setItem(
+      'mdpp.openTabs.v1',
+      JSON.stringify({ paths: ['C:/a.md', 'C:/b.md'], activePath: null }),
+    );
+
+    await useTabsStore.getState().restoreSession();
+
+    const s = useTabsStore.getState();
+    expect(s.tabs.find((t) => t.id === s.activeTabId)?.filePath).toBe('C:\\b.md');
+  });
 });

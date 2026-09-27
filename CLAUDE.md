@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-md++ (package name: `easy-md`) is a lightweight Markdown viewer and editor for Windows and macOS, built with Tauri v2 (Rust backend + React/TypeScript frontend). Licensed MIT, version 0.2.0.
+md++ (package name: `mdplusplus`) is a lightweight Markdown viewer and editor for Windows and macOS, built with Tauri v2 (Rust backend + React/TypeScript frontend). Licensed MIT, version 0.2.0.
 
 ## Commands
 
@@ -114,7 +114,7 @@ Revision mode allows users to track and navigate changes in markdown files:
 - **Test location:** Co-located with source (`*.test.ts` next to implementation)
 - **Git 提交注释：** 使用中文撰写 commit message（如 `feat: 添加文件拖拽支持`、`fix: 修复主题切换闪屏`）
 - **作者：** leonan
-- **仓库：** https://github.com/Gitleonan/easy-md
+- **仓库：** https://github.com/Gitleonan/mdPlusPlus
 
 ## Features
 

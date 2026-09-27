@@ -5,7 +5,8 @@ export async function readFile(path: string): Promise<string> {
   return invoke<string>('read_text_file', { path });
 }
 
-/** 拉取并清空首次启动（命令行）传入的文件列表，一次性消费 */
+/** 拉取并清空启动时暂存的文件列表（一次性消费）。
+ *  调用后 Rust 端即认为前端已就绪，之后的二次启动 / 访达打开改为直接推 open-on-startup 事件。 */
 export async function getStartupFiles(): Promise<string[]> {
   return invoke<string[]>('get_startup_files');
 }
