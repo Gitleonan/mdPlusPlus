@@ -4,7 +4,7 @@ version = "0.3.1"
 description = "md++ — 轻量便捷的 Markdown 阅读器 (Windows / macOS)"
 authors = ["leonan"]
 license = "MIT"
-repository = "https://github.com/Gitleonan/easy-md"
+repository = "https://github.com/Gitleonan/mdPlusPlus"
 edition = "2021"
 rust-version = "1.77.2"
 

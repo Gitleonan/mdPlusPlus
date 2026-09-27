@@ -7,7 +7,7 @@ import appIcon from '../../assets/app-icon.svg';
 import featuresMd from '../../../features.md?raw';
 
 const APP_VERSION = '0.3.1';
-const GITHUB_URL = 'https://github.com/Gitleonan/easy-md';
+const GITHUB_URL = 'https://github.com/Gitleonan/mdPlusPlus';
 
 interface AboutModalProps {
   open: boolean;
