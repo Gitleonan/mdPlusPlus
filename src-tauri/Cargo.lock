@@ -93,7 +93,6 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
- "tokio",
  "url",
  "windows",
 ]

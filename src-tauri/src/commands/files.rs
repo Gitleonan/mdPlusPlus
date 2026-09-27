@@ -4,10 +4,50 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::Manager;
 
-/// 首次启动时命令行传入的 .md/.markdown 文件。
-/// 前端挂载后通过 get_startup_files 主动拉取（取完即清），
-/// 替代"延迟 N 毫秒 emit"——emit 可能早于前端监听注册而丢失。
-pub struct StartupFiles(pub Mutex<Vec<String>>);
+/// 启动时传入的 .md/.markdown 文件暂存区。
+///
+/// 前端挂载后会调用 get_startup_files 主动拉取，于是同一个事件源存在两种时序：
+/// 前端尚未就绪时文件先暂存（挂载后拉取），前端已就绪时不再暂存、由调用方直接 emit。
+/// 暂存判断与取走共用同一把锁，避免"取走之后写入"的文件丢失。
+pub struct StartupFiles(Mutex<StartupFilesInner>);
+
+struct StartupFilesInner {
+    files: Vec<String>,
+    /// 前端是否已经拉取过（拉取即视为已挂载就绪，此后事件可直达）
+    frontend_ready: bool,
+}
+
+impl StartupFiles {
+    pub fn new(files: Vec<String>) -> Self {
+        Self(Mutex::new(StartupFilesInner {
+            files,
+            frontend_ready: false,
+        }))
+    }
+
+    /// 前端就绪前到达的文件先暂存。
+    /// 返回 true 表示前端已就绪（调用方应直接 emit 事件）；false 表示已暂存，等挂载后拉取。
+    pub fn stash(&self, files: &[String]) -> bool {
+        let mut inner = self.lock();
+        if inner.frontend_ready {
+            return true;
+        }
+        inner.files.extend(files.iter().cloned());
+        false
+    }
+
+    /// 取走全部暂存文件并标记前端已就绪（一次性消费）
+    pub fn take(&self) -> Vec<String> {
+        let mut inner = self.lock();
+        inner.frontend_ready = true;
+        std::mem::take(&mut inner.files)
+    }
+
+    /// 锁中毒（持锁时 panic）不影响本结构的数据一致性，直接取回内部值
+    fn lock(&self) -> std::sync::MutexGuard<'_, StartupFilesInner> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
 
 /// 读取文件文本内容
 #[tauri::command]
@@ -15,11 +55,10 @@ pub async fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| format!("读取文件失败: {}", e))
 }
 
-/// 拉取并清空首次启动的文件列表（一次性消费）
+/// 拉取并清空启动时暂存的文件列表（一次性消费），并标记前端已就绪
 #[tauri::command]
-pub async fn get_startup_files(state: tauri::State<'_, StartupFiles>) -> Result<Vec<String>, String> {
-    let mut files = state.0.lock().map_err(|e| e.to_string())?;
-    Ok(std::mem::take(&mut *files))
+pub fn get_startup_files(state: tauri::State<'_, StartupFiles>) -> Vec<String> {
+    state.take()
 }
 
 /// 写入文件文本内容
@@ -200,5 +239,31 @@ mod tests {
         assert_eq!(guess_mime(Path::new("a.JPG")), "image/jpeg");
         assert_eq!(guess_mime(Path::new("a.svg")), "image/svg+xml");
         assert_eq!(guess_mime(Path::new("a.xyz")), "application/octet-stream");
+    }
+
+    #[test]
+    fn startup_files_are_stashed_until_frontend_fetches() {
+        let state = StartupFiles::new(vec!["/startup.md".to_string()]);
+
+        // 前端就绪前（冷启动途中）到达的文件只暂存，不要求调用方 emit
+        assert!(!state.stash(&["/forwarded.md".to_string()]));
+
+        // 前端挂载后一次取走全部：冷启动参数 + 挂载前的二次启动转发
+        assert_eq!(
+            state.take(),
+            vec!["/startup.md".to_string(), "/forwarded.md".to_string()]
+        );
+    }
+
+    #[test]
+    fn startup_files_stop_stashing_once_frontend_is_ready() {
+        let state = StartupFiles::new(Vec::new());
+
+        // 前端挂载拉取（此处为空）后即视为就绪
+        assert!(state.take().is_empty());
+
+        // 就绪后不再暂存，由调用方直接 emit；也不会再被后续拉取重复消费
+        assert!(state.stash(&["/later.md".to_string()]));
+        assert!(state.take().is_empty());
     }
 }

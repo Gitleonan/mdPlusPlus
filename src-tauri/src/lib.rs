@@ -4,11 +4,17 @@ mod watcher;
 use tauri::{Emitter, Manager, RunEvent};
 use watcher::WatcherState;
 
+/// 判断路径是否以 .md / .markdown 结尾（不区分大小写，Windows 上 README.MD 很常见）
+fn has_markdown_ext(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".md") || lower.ends_with(".markdown")
+}
+
 /// 从 argv 中提取 .md / .markdown 文件路径（跳过 argv[0] 即 exe 路径）。
 fn collect_md_files(args: Vec<String>) -> Vec<String> {
     args.into_iter()
         .skip(1)
-        .filter(|a| a.ends_with(".md") || a.ends_with(".markdown"))
+        .filter(|a| has_markdown_ext(a))
         .collect()
 }
 
@@ -19,10 +25,7 @@ fn urls_to_md_paths(urls: Vec<url::Url>) -> Vec<String> {
     urls.into_iter()
         .filter(|u| u.scheme() == "file")
         .filter_map(|u| u.to_file_path().ok())
-        .filter(|p| {
-            let s = p.to_string_lossy();
-            s.ends_with(".md") || s.ends_with(".markdown")
-        })
+        .filter(|p| has_markdown_ext(&p.to_string_lossy()))
         .map(|p| p.to_string_lossy().to_string())
         .collect()
 }
@@ -39,17 +42,12 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let files = collect_md_files(argv);
             if !files.is_empty() {
-                // 写入启动文件列表兜底：若前端还没挂好监听，emit 会丢，
-                // 前端挂载后的 get_startup_files 拉取能补上（两路靠 openTab 去重）
-                if let Some(state) = app.try_state::<commands::files::StartupFiles>() {
-                    state
-                        .0
-                        .lock()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .extend(files.iter().cloned());
+                // 前端已挂载（拉取过启动文件）则直接 emit；冷启动途中尚未就绪则先暂存，
+                // 等前端挂载后由 get_startup_files 取走，避免 emit 早于监听注册而丢失。
+                // 两路都靠前端的 openTab 按路径去重。
+                if app.state::<commands::files::StartupFiles>().stash(&files) {
+                    let _ = app.emit("open-on-startup", &files);
                 }
-                // 已运行实例的前端早已挂载监听，可直接 emit，无需延迟
-                let _ = app.emit("open-on-startup", &files);
             }
             // 程序已运行但不在前台时（如双击 .md 文件唤起），把窗口拉回前台，
             // 否则文件会打开在后台不可见的窗口里。
@@ -62,10 +60,15 @@ pub fn run() {
         }));
     }
 
+    // 首次启动传入的文件：在 build() 之前注册状态，保证任何回调（单实例转发、
+    // macOS RunEvent::Opened、前端的 get_startup_files）都不会遇到状态缺失。
+    let startup_files = collect_md_files(std::env::args().collect());
+
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .manage(commands::files::StartupFiles::new(startup_files))
         .manage(WatcherState::new())
         .setup(|app| {
             // debug 模式启用日志
@@ -76,13 +79,6 @@ pub fn run() {
                         .build(),
                 )?;
             }
-
-            // 首次启动：把命令行传入的 .md/.markdown 存入状态，
-            // 前端挂载后主动拉取（替代定时 emit——webview 加载慢于定时时事件会丢）
-            let startup_files = collect_md_files(std::env::args().collect());
-            app.manage(commands::files::StartupFiles(std::sync::Mutex::new(
-                startup_files,
-            )));
 
             Ok(())
         })
@@ -114,26 +110,65 @@ pub fn run() {
             if let RunEvent::Opened { urls } = event {
                 let files = urls_to_md_paths(urls);
                 if !files.is_empty() {
-                    // 状态兜底：冷启动时前端可能尚未就绪，emit 会丢，
-                    // 挂载后的 get_startup_files 拉取能补上（两路靠 openTab 去重）
-                    if let Some(state) = app_handle
-                        .try_state::<commands::files::StartupFiles>()
+                    // 已运行实例的前端早已挂载监听，可直接 emit；冷启动时前端可能尚未就绪，
+                    // 此时只暂存，等前端挂载后由 get_startup_files 取走（两路靠 openTab 去重）。
+                    if app_handle
+                        .state::<commands::files::StartupFiles>()
+                        .stash(&files)
                     {
-                        state
-                            .0
-                            .lock()
-                            .unwrap_or_else(|p| p.into_inner())
-                            .extend(files.iter().cloned());
+                        let _ = app_handle.emit("open-on-startup", &files);
                     }
-                    // 已运行实例的前端早已挂载监听；冷启动时前端可能尚未就绪，
-                    // 延迟一小段以覆盖两种情形（前端 openTab 按路径去重，重复也无害）。
-                    let handle = app_handle.clone();
-                    tauri::async_runtime::spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        let _ = handle.emit("open-on-startup", &files);
-                    });
                 }
             }
             let _ = app_handle; // 非 macOS 平台占位，避免未使用告警
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn skips_argv0_and_non_markdown_arguments() {
+        let files = collect_md_files(args(&[
+            "/Applications/md++.app/Contents/MacOS/md++",
+            "--flag",
+            "/docs/a.md",
+            "/docs/notes.markdown",
+            "/docs/readme.txt",
+        ]));
+        assert_eq!(files, args(&["/docs/a.md", "/docs/notes.markdown"]));
+    }
+
+    #[test]
+    fn matches_markdown_extension_case_insensitively() {
+        let files = collect_md_files(args(&[
+            "md++.exe",
+            "C:\\docs\\README.MD",
+            "C:\\docs\\Notes.Markdown",
+            "C:\\docs\\README.MD.bak",
+        ]));
+        assert_eq!(
+            files,
+            args(&["C:\\docs\\README.MD", "C:\\docs\\Notes.Markdown"])
+        );
+    }
+
+    #[test]
+    fn turns_finder_file_urls_into_decoded_local_paths() {
+        let urls = vec![
+            url::Url::parse("file:///Users/x/my%20note.md").unwrap(),
+            url::Url::parse("file:///Users/x/notes.markdown").unwrap(),
+            url::Url::parse("file:///Users/x/image.png").unwrap(),
+            url::Url::parse("https://example.com/remote.md").unwrap(),
+        ];
+        assert_eq!(
+            urls_to_md_paths(urls),
+            args(&["/Users/x/my note.md", "/Users/x/notes.markdown"])
+        );
+    }
 }
