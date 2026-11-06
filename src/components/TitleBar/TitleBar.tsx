@@ -29,6 +29,21 @@ interface SimpleMenuState {
 
 const iconSize = 14;
 
+/** 菜单定位:按视口钳制,防止贴边按钮(如「更多」)的菜单溢出窗口被裁剪。
+ *  估算高度:菜单项 × 30px + padding + 分隔线,足够 7 项的 tab 菜单与 3 项的更多菜单。 */
+function clampMenuToViewport(x: number, y: number, itemCount: number, hasSeparator: boolean): { x: number; y: number } {
+  const EST_ITEM_H = 30;
+  const EST_EXTRA = 22;
+  const estH = itemCount * EST_ITEM_H + (hasSeparator ? 10 : 0) + EST_EXTRA;
+  const estW = 180; // min-width 160 + padding
+  const flipX = x + estW > window.innerWidth - 8;
+  const flipY = y + estH > window.innerHeight - 8;
+  return {
+    x: flipX ? Math.max(8, x - estW) : x,
+    y: flipY ? Math.max(8, y - estH) : y,
+  };
+}
+
 export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
   const {
     tabs,
@@ -105,7 +120,8 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
               e.preventDefault();
               e.stopPropagation();
               setActive(t.id);
-              setMenu({ tabId: t.id, x: e.clientX, y: e.clientY });
+              const { x, y } = clampMenuToViewport(e.clientX, e.clientY, 7, true);
+              setMenu({ tabId: t.id, x, y });
             }}
             onDragStart={(e) => {
               setDraggingTabId(t.id);
@@ -243,7 +259,11 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
         {/* 6. 更多(主题管理 / 无痕会话 / 关于 收纳进溢出菜单) */}
         <button
           className={`titlebar-tool-btn titlebar-icon-btn ${isEphemeral ? 'titlebar-tool-active' : ''}`}
-          onClick={(e) => { e.stopPropagation(); setMoreMenu({ x: e.clientX, y: e.clientY }); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            const { x, y } = clampMenuToViewport(e.clientX, e.clientY, 3, true);
+            setMoreMenu({ x, y });
+          }}
           aria-label="更多选项"
           aria-haspopup="menu"
           title="更多选项"
