@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useEditStore } from '../../stores/editStore';
 import { writeFile } from '../../ipc/files';
+import { detectEol, normalizeEol, restoreEol } from '../../utils/eol';
 import { renderMarkdown } from '../../features/markdown/render';
 import { highlightCodeBlocks } from '../../features/markdown/highlight';
 import { extractToc } from '../../features/markdown/toc';
@@ -126,12 +127,14 @@ export function Editor() {
   // 同步初始内容到 textarea + 首次高亮
   useEffect(() => {
     if (textareaRef.current && activeTab) {
-      textareaRef.current.value = activeTab.source;
+      // 高亮层与 textarea 用同一份归一化文本，避免每行尾残留 \r 以及首次按键时全量重建
+      const normalized = normalizeEol(activeTab.source);
+      textareaRef.current.value = normalized;
       textareaRef.current.scrollTop = activeTab.scrollTop;
       if (preRef.current) {
         preRef.current.style.transform = `translateY(-${activeTab.scrollTop}px)`;
       }
-      updateHighlight(activeTab.source);
+      updateHighlight(normalized);
       setDirty(false);
     }
     return () => {
@@ -173,14 +176,16 @@ export function Editor() {
 
   const handleSave = useCallback(async () => {
     if (!activeTab || !textareaRef.current || saveState !== 'idle') return;
-    const content = textareaRef.current.value;
+    const raw = textareaRef.current.value;
+    // textarea 会把 CRLF/CR 归一化为 LF，保存前还原文件原始行尾，避免改一个字导致全文件 diff
+    const saved = restoreEol(raw, detectEol(activeTab.source));
     setSaveState('saving');
     try {
-      await writeFile(activeTab.filePath, content);
+      await writeFile(activeTab.filePath, saved);
       const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-      const toc = extractToc(content);
-      const html = await highlightCodeBlocks(renderMarkdown(content), theme);
-      useTabsStore.getState().updateSource(activeTab.id, content, html, toc);
+      const toc = extractToc(saved);
+      const html = await highlightCodeBlocks(renderMarkdown(saved), theme);
+      useTabsStore.getState().updateSource(activeTab.id, saved, html, toc);
       markSaved();
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 1500);
