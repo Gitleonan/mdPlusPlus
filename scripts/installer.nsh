@@ -33,6 +33,14 @@
   WriteRegStr HKCU "Software\md++\Capabilities\FileAssociations" ".markdown" "MdppMarkdown"
   WriteRegStr HKCU "Software\RegisteredApplications" "md++" "Software\md++\Capabilities"
 
+  ; 清理历史版本遗留的主二进制注册(exe 曾用名 app.exe),避免「打开方式」列表出现死项
+  DeleteRegKey HKCU "Software\Classes\Applications\app.exe"
+
   ; 通知系统刷新文件关联
   System::Call 'Shell32::SHChangeNotify(i 0x08000000, i 0x1000, i 0, i 0)'
+
+  ; exe 改名升级后 explorer 图标缓存仍持有旧映射,SHChangeNotify 不清缓存 DB。
+  ; 删除 iconcache 让 explorer 下次启动重建;当前会话内的残余由用户侧重启 explorer 兜底。
+  Delete "$LOCALAPPDATA\IconCache.db"
+  Delete "$LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db"
 !macroend

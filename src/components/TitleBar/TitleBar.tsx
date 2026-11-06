@@ -280,16 +280,16 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
             onContextMenu={(e) => e.preventDefault()}
           >
             <button role="menuitem" onClick={() => { setMoreMenu(null); onThemeManager(); }}>
-              <Palette size={12} strokeWidth={1.5} style={{ marginRight: 6, verticalAlign: -1.5 }} />
+              <Palette size={13} strokeWidth={1.5} />
               自定义主题…
             </button>
             <button role="menuitem" onClick={() => { setMoreMenu(null); toggleEphemeral(); }}>
-              <Ghost size={12} strokeWidth={1.5} style={{ marginRight: 6, verticalAlign: -1.5 }} />
+              <Ghost size={13} strokeWidth={1.5} />
               {isEphemeral ? '关闭无痕会话' : '开启无痕会话'}
             </button>
             <div className="tab-context-menu-separator" />
             <button role="menuitem" onClick={() => { setMoreMenu(null); onAbout(); }}>
-              <Info size={12} strokeWidth={1.5} style={{ marginRight: 6, verticalAlign: -1.5 }} />
+              <Info size={13} strokeWidth={1.5} />
               关于 md++
             </button>
           </div>
