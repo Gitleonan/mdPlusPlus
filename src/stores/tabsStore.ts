@@ -5,6 +5,7 @@ import { highlightCodeBlocks } from '../features/markdown/highlight';
 import { extractToc } from '../features/markdown/toc';
 import { readFile, watchFiles } from '../ipc/files';
 import { isMac } from '../utils/platform';
+import { useEphemeralStore } from './ephemeralStore';
 
 interface TabsState {
   tabs: Tab[];
@@ -15,6 +16,7 @@ interface TabsState {
   closeTabsToLeft: (id: string) => void;
   closeTabsToRight: (id: string) => void;
   closeOtherTabs: (id: string) => void;
+  closeAllTabs: () => void;
   moveTab: (id: string, targetId: string) => void;
   setActive: (id: string) => void;
   setScrollTop: (id: string, scrollTop: number) => void;
@@ -47,6 +49,8 @@ function isWindows(): boolean {
 }
 
 function saveSession(tabs: Tab[], activeTabId: string | null) {
+  // 无痕会话：跳过写入，下次启动由 restoreSession 清掉旧会话
+  if (useEphemeralStore.getState().enabled) return;
   try {
     const activeTab = tabs.find((t) => t.id === activeTabId);
     localStorage.setItem(
@@ -230,6 +234,14 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     });
   },
 
+  closeAllTabs() {
+    set((s) => {
+      if (s.tabs.length === 0) return s;
+      syncSessionAndWatcher([], null);
+      return { tabs: [], activeTabId: null };
+    });
+  },
+
   moveTab(id, targetId) {
     if (id === targetId) return;
     set((s) => {
@@ -289,6 +301,15 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   },
 
   async restoreSession() {
+    // 无痕会话：不恢复，并顺手清掉开启前遗留的旧会话数据
+    if (useEphemeralStore.getState().enabled) {
+      try {
+        localStorage.removeItem(SESSION_KEY);
+      } catch {
+        // localStorage 不可用时无数据可清
+      }
+      return;
+    }
     if (get().tabs.length > 0) return;
     const session = readSession();
     if (!session?.paths.length) return;

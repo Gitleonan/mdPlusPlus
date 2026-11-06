@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { useTabsStore } from './tabsStore';
+import { useEphemeralStore } from './ephemeralStore';
 
 // Mock Tauri API
 vi.mock('@tauri-apps/api/core', () => ({
@@ -12,6 +13,7 @@ describe('tabsStore', () => {
 
   beforeEach(() => {
     useTabsStore.setState({ tabs: [], activeTabId: null });
+    useEphemeralStore.setState({ enabled: false });
     localStorage.clear();
     invokeMock.mockResolvedValue('# Hello');
   });
@@ -120,6 +122,33 @@ describe('tabsStore', () => {
       paths: ['C:\\a.md', 'C:\\b.md'],
       activePath: 'C:\\a.md',
     });
+  });
+
+  it('无痕模式下 openTab 不落盘会话', async () => {
+    useEphemeralStore.getState().toggle();
+    await useTabsStore.getState().openTab('C:/a.md');
+    await useTabsStore.getState().setActive(useTabsStore.getState().tabs[0].id);
+    expect(localStorage.getItem('mdpp.openTabs.v1')).toBeNull();
+  });
+
+  it('无痕模式下启动恢复被跳过并清掉旧会话', async () => {
+    localStorage.setItem(
+      'mdpp.openTabs.v1',
+      JSON.stringify({ paths: ['C:\\old.md'], activePath: 'C:\\old.md' }),
+    );
+    useEphemeralStore.getState().toggle();
+    await useTabsStore.getState().restoreSession();
+    expect(useTabsStore.getState().tabs).toHaveLength(0);
+    expect(localStorage.getItem('mdpp.openTabs.v1')).toBeNull();
+  });
+
+  it('closeAllTabs 清空全部标签', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    await useTabsStore.getState().openTab('C:/b.md');
+    useTabsStore.getState().closeAllTabs();
+    const s = useTabsStore.getState();
+    expect(s.tabs).toHaveLength(0);
+    expect(s.activeTabId).toBeNull();
   });
 
   it('sets scroll position', async () => {

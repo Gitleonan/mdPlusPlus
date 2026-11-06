@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows } from 'lucide-react';
+import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows, Ghost } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useEditStore } from '../../stores/editStore';
 import { useZenStore } from '../../stores/zenStore';
+import { useEphemeralStore } from '../../stores/ephemeralStore';
 import { useRevisionStore } from '../../stores/revisionStore';
 import { openViaDialog } from '../../hooks/useOpenFile';
 import { openContainingFolder } from '../../ipc/opener';
@@ -32,6 +33,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
     closeTabsToLeft,
     closeTabsToRight,
     closeOtherTabs,
+    closeAllTabs,
     moveTab,
     reloadTab,
   } = useTabsStore();
@@ -42,6 +44,8 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
   const toggleEditing = useEditStore((s) => s.toggleEditing);
   const isZen = useZenStore((s) => s.isZen);
   const toggleZen = useZenStore((s) => s.toggle);
+  const isEphemeral = useEphemeralStore((s) => s.enabled);
+  const toggleEphemeral = useEphemeralStore((s) => s.toggle);
   const isMonitoring = useRevisionStore(s => s.isRevisionMode);
   const enableRevisionMode = useRevisionStore(s => s.enableRevisionMode);
   const disableRevisionMode = useRevisionStore(s => s.disableRevisionMode);
@@ -237,7 +241,17 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           <Palette size={iconSize} strokeWidth={1.5} />
         </button>
 
-        {/* 7. 关于 */}
+        {/* 7. 无痕会话 */}
+        <button
+          className={`titlebar-tool-btn titlebar-icon-btn ${isEphemeral ? 'titlebar-tool-active' : ''}`}
+          onClick={toggleEphemeral}
+          aria-label={isEphemeral ? '关闭无痕会话' : '开启无痕会话'}
+          title="无痕会话：开启后关闭软件不恢复本次标签页，也不写入最近文件"
+        >
+          <Ghost size={iconSize} strokeWidth={1.5} />
+        </button>
+
+        {/* 8. 关于 */}
         <button
           className="titlebar-tool-btn titlebar-icon-btn"
           onClick={onAbout}
@@ -259,6 +273,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           <button role="menuitem" onClick={() => runMenuAction(() => closeTabsToLeft(menuTab.id))}>关闭左侧</button>
           <button role="menuitem" onClick={() => runMenuAction(() => closeTabsToRight(menuTab.id))}>关闭右侧</button>
           <button role="menuitem" onClick={() => runMenuAction(() => closeOtherTabs(menuTab.id))}>关闭其他</button>
+          <button role="menuitem" onClick={() => runMenuAction(() => closeAllTabs())}>关闭全部</button>
           <div className="tab-context-menu-separator" />
           <button role="menuitem" onClick={() => runMenuAction(() => openContainingFolder(menuTab.filePath))}>打开所在位置</button>
           <button role="menuitem" onClick={() => runMenuAction(() => copyPath(menuTab.filePath))}>复制文件路径</button>

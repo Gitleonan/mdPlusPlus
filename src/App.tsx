@@ -24,6 +24,7 @@ import { useFileWatcher } from './features/fileWatch/useFileWatcher';
 import { getStartupFiles } from './ipc/files';
 import { useRecentStore } from './stores/recentStore';
 import { useThemeStore } from './stores/themeStore';
+import { useEphemeralStore } from './stores/ephemeralStore';
 import { exportDocument, type ExportFormat } from './features/export/export';
 
 export default function App() {
@@ -92,9 +93,11 @@ export default function App() {
       .catch((err) => console.error('[startup files] fetch failed', err));
   }, []);
 
-  // 记录最近文件
+  // 记录最近文件（无痕会话下跳过，保持"不留痕迹"语义一致）
   useEffect(() => {
-    if (activeTab) record(activeTab.filePath, activeTab.fileName);
+    if (activeTab && !useEphemeralStore.getState().enabled) {
+      record(activeTab.filePath, activeTab.fileName);
+    }
   }, [activeTab?.id, record]);
 
   // 切换 tab 时退出编辑模式和修订模式
