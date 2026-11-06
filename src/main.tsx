@@ -18,19 +18,20 @@ document.addEventListener('contextmenu', (e) => {
 };
 
 // --- 全局错误捕获 ---
+// 细节进 console;用户可见层只在页面尚未挂载时显示一行人话(挂载后由 ErrorBoundary/Toast 接管)
 window.addEventListener('error', (e) => {
   console.error('[GLOBAL ERROR]', e.error ?? e.message);
   const el = document.getElementById('global-error');
-  if (el) {
-    el.textContent = `[GLOBAL ERROR] ${e.error?.stack ?? e.error ?? e.message}`;
+  if (el && document.getElementById('root')?.childElementCount === 0) {
+    el.textContent = 'md++ 启动遇到问题,请重启应用;问题持续请到 GitHub 反馈。';
     el.style.display = 'block';
   }
 });
 window.addEventListener('unhandledrejection', (e) => {
   console.error('[UNHANDLED REJECTION]', e.reason);
   const el = document.getElementById('global-error');
-  if (el) {
-    el.textContent = `[UNHANDLED REJECTION] ${e.reason?.stack ?? e.reason}`;
+  if (el && document.getElementById('root')?.childElementCount === 0) {
+    el.textContent = 'md++ 启动遇到问题,请重启应用;问题持续请到 GitHub 反馈。';
     el.style.display = 'block';
   }
 });
@@ -49,18 +50,43 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
     if (this.state.error) {
       return (
         <div style={{
-          padding: 40,
-          fontFamily: 'monospace',
-          color: '#dc2626',
-          background: '#1b1b1f',
           minHeight: '100vh',
-          whiteSpace: 'pre-wrap',
-          fontSize: 14,
-          lineHeight: 1.6,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#0c0f14',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif',
         }}>
-          <h2 style={{ color: '#f87171' }}>💥 React 渲染崩溃</h2>
-          <p><strong>{this.state.error.message}</strong></p>
-          <pre style={{ color: '#94a3b8' }}>{this.state.error.stack}</pre>
+          <div style={{
+            maxWidth: 480,
+            padding: '40px 32px',
+            textAlign: 'center',
+          }}>
+            <h2 style={{ color: '#e4e7ec', fontSize: 18, fontWeight: 600, margin: '0 0 12px' }}>
+              md++ 遇到了问题
+            </h2>
+            <p style={{ color: '#8b93a5', fontSize: 14, lineHeight: 1.7, margin: '0 0 24px' }}>
+              界面渲染时出现异常,你的文件没有受到影响。<br />
+              重启应用通常可以解决;问题持续请到 GitHub 反馈。
+            </p>
+            <button
+              onClick={() => { this.setState({ error: null }); }}
+              style={{
+                padding: '8px 28px',
+                borderRadius: 999,
+                border: 'none',
+                background: 'var(--accent)',
+                color: '#fff',
+                fontSize: 14,
+                cursor: 'pointer',
+              }}
+            >
+              重试
+            </button>
+            <p style={{ color: '#5a6172', fontSize: 11, marginTop: 24, wordBreak: 'break-all' }}>
+              {this.state.error.message}
+            </p>
+          </div>
         </div>
       );
     }
@@ -69,10 +95,10 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
 }
 
 // 错误提示 DOM 节点（全局错误用）
-const globalErrorEl = document.createElement('pre');
+const globalErrorEl = document.createElement('div');
 globalErrorEl.id = 'global-error';
 globalErrorEl.style.cssText =
-  'display:none;position:fixed;inset:0;z-index:99999;background:#1b1b1f;color:#dc2626;padding:40px;font-family:monospace;font-size:14px;white-space:pre-wrap;line-height:1.6;overflow:auto;';
+  'display:none;position:fixed;inset:0;z-index:99999;background:#0c0f14;color:#8b93a5;padding:40px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;font-size:14px;line-height:1.7;overflow:auto;';
 document.body.appendChild(globalErrorEl);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

@@ -24,6 +24,9 @@ import { useFileWatcher } from './features/fileWatch/useFileWatcher';
 import { getStartupFiles } from './ipc/files';
 import { useRecentStore } from './stores/recentStore';
 import { useThemeStore } from './stores/themeStore';
+import { useEphemeralStore } from './stores/ephemeralStore';
+import { useToastStore } from './stores/toastStore';
+import { ToastHost } from './components/Toast/Toast';
 import { exportDocument, type ExportFormat } from './features/export/export';
 
 export default function App() {
@@ -51,7 +54,11 @@ export default function App() {
   const loadThemes = useCustomThemeStore((s) => s.loadThemes);
 
   const requestExport = useCallback(() => {
-    if (!contentRef.current) return;
+    if (!contentRef.current) {
+      // 编辑模式下 contentRef 未挂载:给出反馈而不是静默无响应
+      useToastStore.getState().push('导出需在预览模式下使用,请先退出编辑 (Ctrl+E)', 'info');
+      return;
+    }
     setExportModalOpen(true);
   }, []);
 
@@ -92,9 +99,11 @@ export default function App() {
       .catch((err) => console.error('[startup files] fetch failed', err));
   }, []);
 
-  // 记录最近文件
+  // 记录最近文件（无痕会话下跳过，保持"不留痕迹"语义一致）
   useEffect(() => {
-    if (activeTab) record(activeTab.filePath, activeTab.fileName);
+    if (activeTab && !useEphemeralStore.getState().enabled) {
+      record(activeTab.filePath, activeTab.fileName);
+    }
   }, [activeTab?.id, record]);
 
   // 切换 tab 时退出编辑模式和修订模式
@@ -154,6 +163,7 @@ export default function App() {
         </AnimatePresence>
       </div>
       <Lightbox />
+      <ToastHost />
       <ExportPdfModal
         open={exportModalOpen}
         fileName={activeTab?.fileName ?? null}

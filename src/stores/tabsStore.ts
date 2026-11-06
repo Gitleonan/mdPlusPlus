@@ -5,6 +5,8 @@ import { highlightCodeBlocks } from '../features/markdown/highlight';
 import { extractToc } from '../features/markdown/toc';
 import { readFile, watchFiles } from '../ipc/files';
 import { isMac } from '../utils/platform';
+import { useEphemeralStore } from './ephemeralStore';
+import { useEditStore } from './editStore';
 
 interface TabsState {
   tabs: Tab[];
@@ -15,12 +17,15 @@ interface TabsState {
   closeTabsToLeft: (id: string) => void;
   closeTabsToRight: (id: string) => void;
   closeOtherTabs: (id: string) => void;
+  closeAllTabs: () => void;
   moveTab: (id: string, targetId: string) => void;
   setActive: (id: string) => void;
   setScrollTop: (id: string, scrollTop: number) => void;
   updateSource: (id: string, source: string, html: string, toc: TocItem[]) => void;
   reloadTab: (id: string) => Promise<void>;
   restoreSession: () => Promise<void>;
+  /** 无视无痕守卫立即落盘当前 tab 集(退出无痕时的"所见即所留"基线) */
+  syncSessionNow: () => void;
 }
 
 let seq = 0;
@@ -47,6 +52,8 @@ function isWindows(): boolean {
 }
 
 function saveSession(tabs: Tab[], activeTabId: string | null) {
+  // 无痕会话：跳过写入，下次启动由 restoreSession 清掉旧会话
+  if (useEphemeralStore.getState().enabled) return;
   try {
     const activeTab = tabs.find((t) => t.id === activeTabId);
     localStorage.setItem(
@@ -112,6 +119,19 @@ function syncWatcherFromTabs(tabs: Tab[]) {
 function syncSessionAndWatcher(tabs: Tab[], activeTabId: string | null) {
   saveSession(tabs, activeTabId);
   syncWatcherFromTabs(tabs);
+}
+
+/**
+ * 关闭可能丢弃未保存修改的 tab 前确认,防静默数据丢失。
+ * 仅编辑模式下的 tab 才可能脏(编辑器是唯一改动入口),故对单个 tab 只在
+ * 它是当前编辑目标时询问;所有 close* 变体统一经此守卫。
+ */
+function confirmDiscardDirty(s: { tabs: Tab[]; activeTabId: string | null }, id: string): boolean {
+  const editing = useEditStore.getState();
+  if (!editing.isEditing || !editing.isDirty || s.activeTabId !== id) return true;
+  const target = s.tabs.find((t) => t.id === id);
+  // ponytail: window.confirm 是 store 动作里唯一可用的同步确认;玻璃 ConfirmDialog 需异步化全部调用方
+  return window.confirm(`「${target?.fileName ?? '当前文档'}」有未保存的修改,关闭后将丢失。确定关闭?`);
 }
 
 export const useTabsStore = create<TabsState>((set, get) => ({
@@ -186,6 +206,9 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   },
 
   closeTab(id) {
+    // ponytail: store 动作里用同步 window.confirm 确认丢弃脏 tab;玻璃 ConfirmDialog 需异步 pending-confirm 模式,
+    // 出现第二个异步确认场景时再抽象。closeTabsToLeft/Right/Other/All 会丢脏 tab,统一先走 confirmDiscardDirty。
+    if (!confirmDiscardDirty(get(), id)) return;
     set((s) => {
       const idx = s.tabs.findIndex((t) => t.id === id);
       const tabs = s.tabs.filter((t) => t.id !== id);
@@ -199,34 +222,71 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   },
 
   closeTabsToLeft(id) {
-    set((s) => {
-      const idx = s.tabs.findIndex((t) => t.id === id);
-      if (idx <= 0) return s;
-      const tabs = s.tabs.slice(idx);
-      const activeTabId = tabs.some((t) => t.id === s.activeTabId) ? s.activeTabId : id;
+    // 左侧可能包含脏 tab:任一将被丢弃的 tab 为脏时确认一次
+    const s = get();
+    const idx = s.tabs.findIndex((t) => t.id === id);
+    if (idx <= 0) return;
+    if (!s.tabs.slice(0, idx).some((t) => confirmDiscardDirty(s, t.id))) return;
+    set((st) => {
+      const i = st.tabs.findIndex((t) => t.id === id);
+      if (i <= 0) return st;
+      const tabs = st.tabs.slice(i);
+      const activeTabId = tabs.some((t) => t.id === st.activeTabId) ? st.activeTabId : id;
       syncSessionAndWatcher(tabs, activeTabId);
       return { tabs, activeTabId };
     });
   },
 
   closeTabsToRight(id) {
-    set((s) => {
-      const idx = s.tabs.findIndex((t) => t.id === id);
-      if (idx < 0 || idx >= s.tabs.length - 1) return s;
-      const tabs = s.tabs.slice(0, idx + 1);
-      const activeTabId = tabs.some((t) => t.id === s.activeTabId) ? s.activeTabId : id;
+    const s = get();
+    const idx = s.tabs.findIndex((t) => t.id === id);
+    if (idx < 0 || idx >= s.tabs.length - 1) return;
+    if (!s.tabs.slice(idx + 1).some((t) => confirmDiscardDirty(s, t.id))) return;
+    set((st) => {
+      const i = st.tabs.findIndex((t) => t.id === id);
+      if (i < 0 || i >= st.tabs.length - 1) return st;
+      const tabs = st.tabs.slice(0, i + 1);
+      const activeTabId = tabs.some((t) => t.id === st.activeTabId) ? st.activeTabId : id;
       syncSessionAndWatcher(tabs, activeTabId);
       return { tabs, activeTabId };
     });
   },
 
   closeOtherTabs(id) {
-    set((s) => {
-      const tab = s.tabs.find((t) => t.id === id);
-      if (!tab) return s;
+    const s = get();
+    if (!s.tabs.find((t) => t.id === id)) return;
+    if (!s.tabs.filter((t) => t.id !== id).some((t) => confirmDiscardDirty(s, t.id))) return;
+    set((st) => {
+      const tab = st.tabs.find((t) => t.id === id);
+      if (!tab) return st;
       const tabs = [tab];
       syncSessionAndWatcher(tabs, id);
       return { tabs, activeTabId: id };
+    });
+  },
+
+  syncSessionNow() {
+    const s = get();
+    try {
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          paths: s.tabs.map((t) => t.filePath),
+          activePath: s.tabs.find((t) => t.id === s.activeTabId)?.filePath ?? null,
+        }),
+      );
+    } catch {
+      // localStorage 不可用时跳过
+    }
+  },
+
+  closeAllTabs() {
+    const s = get();
+    if (s.tabs.length === 0) return;
+    if (!s.tabs.some((t) => confirmDiscardDirty(s, t.id))) return;
+    set(() => {
+      syncSessionAndWatcher([], null);
+      return { tabs: [], activeTabId: null };
     });
   },
 
@@ -289,6 +349,15 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   },
 
   async restoreSession() {
+    // 无痕会话：不恢复，并顺手清掉开启前遗留的旧会话数据
+    if (useEphemeralStore.getState().enabled) {
+      try {
+        localStorage.removeItem(SESSION_KEY);
+      } catch {
+        // localStorage 不可用时无数据可清
+      }
+      return;
+    }
     if (get().tabs.length > 0) return;
     const session = readSession();
     if (!session?.paths.length) return;

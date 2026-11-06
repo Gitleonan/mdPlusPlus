@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { useTabsStore } from './tabsStore';
+import { useEphemeralStore } from './ephemeralStore';
+import { useEditStore } from './editStore';
 
 // Mock Tauri API
 vi.mock('@tauri-apps/api/core', () => ({
@@ -12,6 +14,8 @@ describe('tabsStore', () => {
 
   beforeEach(() => {
     useTabsStore.setState({ tabs: [], activeTabId: null });
+    useEphemeralStore.setState({ enabled: false });
+    useEditStore.setState({ isEditing: false, isDirty: false, lastSaveAt: 0 });
     localStorage.clear();
     invokeMock.mockResolvedValue('# Hello');
   });
@@ -120,6 +124,68 @@ describe('tabsStore', () => {
       paths: ['C:\\a.md', 'C:\\b.md'],
       activePath: 'C:\\a.md',
     });
+  });
+
+  it('无痕模式下 openTab 不落盘会话', async () => {
+    useEphemeralStore.getState().toggle();
+    await useTabsStore.getState().openTab('C:/a.md');
+    await useTabsStore.getState().setActive(useTabsStore.getState().tabs[0].id);
+    expect(localStorage.getItem('mdpp.openTabs.v1')).toBeNull();
+  });
+
+  it('无痕模式下启动恢复被跳过并清掉旧会话', async () => {
+    localStorage.setItem(
+      'mdpp.openTabs.v1',
+      JSON.stringify({ paths: ['C:\\old.md'], activePath: 'C:\\old.md' }),
+    );
+    useEphemeralStore.getState().toggle();
+    await useTabsStore.getState().restoreSession();
+    expect(useTabsStore.getState().tabs).toHaveLength(0);
+    expect(localStorage.getItem('mdpp.openTabs.v1')).toBeNull();
+  });
+
+  it('closeAllTabs 清空全部标签', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    await useTabsStore.getState().openTab('C:/b.md');
+    useTabsStore.getState().closeAllTabs();
+    const s = useTabsStore.getState();
+    expect(s.tabs).toHaveLength(0);
+    expect(s.activeTabId).toBeNull();
+  });
+
+  it('编辑模式下关闭脏 tab 需确认,取消则不关闭', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    const id = useTabsStore.getState().tabs[0].id;
+    useEditStore.setState({ isEditing: true, isDirty: true });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    useTabsStore.getState().closeTab(id);
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    confirmSpy.mockReturnValue(true);
+    useTabsStore.getState().closeTab(id);
+    expect(useTabsStore.getState().tabs).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+
+  it('非编辑模式关 tab 不弹确认', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    const id = useTabsStore.getState().tabs[0].id;
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    useTabsStore.getState().closeTab(id);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(useTabsStore.getState().tabs).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+
+  it('editStore.toggleEditing 脏状态下需确认,取消则停留编辑', () => {
+    useEditStore.setState({ isEditing: true, isDirty: true });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    useEditStore.getState().toggleEditing();
+    expect(useEditStore.getState().isEditing).toBe(true);
+    confirmSpy.mockReturnValue(true);
+    useEditStore.getState().toggleEditing();
+    expect(useEditStore.getState().isEditing).toBe(false);
+    expect(useEditStore.getState().isDirty).toBe(false);
+    confirmSpy.mockRestore();
   });
 
   it('sets scroll position', async () => {

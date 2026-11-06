@@ -11,7 +11,15 @@ export function useOpenFile() {
 
   // 拖拽
   useEffect(() => {
-    const unlisten = getCurrentWebview().onDragDropEvent(async (e) => {
+    // Tauri IPC 缺失(纯浏览器调试)时跳过事件监听,避免挂载即崩溃
+    let webview: ReturnType<typeof getCurrentWebview>;
+    try {
+      webview = getCurrentWebview();
+    } catch {
+      console.warn('[openFile] Tauri IPC 不可用,拖拽打开已禁用');
+      return;
+    }
+    const unlisten = webview.onDragDropEvent(async (e) => {
       console.log('[openFile] drag-drop event:', e.payload);
       if (e.payload.type === 'drop') {
         const paths = (e.payload.paths || []).filter((p: string) => MD_EXT.test(p));

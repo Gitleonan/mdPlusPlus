@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { openExternalUrl, registerFileAssociation, checkFileAssociation } from '../../ipc/opener';
 import { writeFile, getAppDataDir } from '../../ipc/files';
 import { useTabsStore } from '../../stores/tabsStore';
+import { Modal } from '../ui/Modal';
 import appIcon from '../../assets/app-icon.svg';
 import featuresMd from '../../../features.md?raw';
 
-const APP_VERSION = '0.3.1';
+const APP_VERSION = '0.4.0';
 const GITHUB_URL = 'https://github.com/Gitleonan/mdPlusPlus';
 
 interface AboutModalProps {
@@ -76,27 +76,10 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
   };
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="about-overlay"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
-          onClick={onClose}
-        >
-          <motion.div
-            className="about-modal"
-            initial={{ opacity: 0, scale: 0.94, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: 16 }}
-            transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-            onClick={(e) => e.stopPropagation()}
-          >
+    <Modal open={open} onClose={onClose} labelledBy="about-title" cardClassName="about-modal">
         <div className="about-modal-inner">
           <img className="about-icon" src={appIcon} alt="" aria-hidden="true" />
-          <h3 className="about-title">md++</h3>
+          <h3 className="about-title" id="about-title">md++</h3>
           <p className="about-version">v{APP_VERSION}</p>
           <p className="about-desc">轻量便捷的 Markdown 阅读器</p>
 
@@ -133,7 +116,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
               {checkingDefault ? (
                 <span className="about-value">检测中…</span>
               ) : isDefaultHandler ? (
-                <span className="about-value" style={{ color: '#4caf50' }}>已设为默认 Markdown 阅读器</span>
+                <span className="about-value" style={{ color: 'var(--success)' }}>已设为默认 Markdown 阅读器</span>
               ) : (
                 <>
                   <button
@@ -167,9 +150,6 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
             关闭
           </button>
         </div>
-      </motion.div>
-    </motion.div>
-    )}
-  </AnimatePresence>
+    </Modal>
   );
 }

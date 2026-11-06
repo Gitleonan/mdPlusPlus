@@ -1,8 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
+import { stripBom } from '../utils/eol';
 
-/** 读取本地文件文本内容 */
+/** 读取本地文件文本内容（剥前导 UTF-8 BOM，否则第一个标题会解析失败） */
 export async function readFile(path: string): Promise<string> {
-  return invoke<string>('read_text_file', { path });
+  const raw = await invoke<string>('read_text_file', { path });
+  return stripBom(raw);
 }
 
 /** 拉取并清空启动时暂存的文件列表（一次性消费）。

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows } from 'lucide-react';
+import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows, Ghost, MoreHorizontal } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useEditStore } from '../../stores/editStore';
 import { useZenStore } from '../../stores/zenStore';
+import { useEphemeralStore } from '../../stores/ephemeralStore';
 import { useRevisionStore } from '../../stores/revisionStore';
 import { openViaDialog } from '../../hooks/useOpenFile';
 import { openContainingFolder } from '../../ipc/opener';
@@ -21,7 +22,27 @@ interface TabMenuState {
   y: number;
 }
 
+interface SimpleMenuState {
+  x: number;
+  y: number;
+}
+
 const iconSize = 14;
+
+/** 菜单定位:按视口钳制,防止贴边按钮(如「更多」)的菜单溢出窗口被裁剪。
+ *  估算高度:菜单项 × 30px + padding + 分隔线,足够 7 项的 tab 菜单与 3 项的更多菜单。 */
+function clampMenuToViewport(x: number, y: number, itemCount: number, hasSeparator: boolean): { x: number; y: number } {
+  const EST_ITEM_H = 30;
+  const EST_EXTRA = 22;
+  const estH = itemCount * EST_ITEM_H + (hasSeparator ? 10 : 0) + EST_EXTRA;
+  const estW = 180; // min-width 160 + padding
+  const flipX = x + estW > window.innerWidth - 8;
+  const flipY = y + estH > window.innerHeight - 8;
+  return {
+    x: flipX ? Math.max(8, x - estW) : x,
+    y: flipY ? Math.max(8, y - estH) : y,
+  };
+}
 
 export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
   const {
@@ -32,6 +53,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
     closeTabsToLeft,
     closeTabsToRight,
     closeOtherTabs,
+    closeAllTabs,
     moveTab,
     reloadTab,
   } = useTabsStore();
@@ -42,16 +64,19 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
   const toggleEditing = useEditStore((s) => s.toggleEditing);
   const isZen = useZenStore((s) => s.isZen);
   const toggleZen = useZenStore((s) => s.toggle);
+  const isEphemeral = useEphemeralStore((s) => s.enabled);
+  const toggleEphemeral = useEphemeralStore((s) => s.toggle);
   const isMonitoring = useRevisionStore(s => s.isRevisionMode);
   const enableRevisionMode = useRevisionStore(s => s.enableRevisionMode);
   const disableRevisionMode = useRevisionStore(s => s.disableRevisionMode);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
+  const [moreMenu, setMoreMenu] = useState<SimpleMenuState | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const menuTab = menu ? tabs.find((t) => t.id === menu.tabId) : null;
 
   useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
+    if (!menu && !moreMenu) return;
+    const close = () => { setMenu(null); setMoreMenu(null); };
     window.addEventListener('click', close);
     window.addEventListener('keydown', close);
     window.addEventListener('blur', close);
@@ -60,7 +85,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
       window.removeEventListener('keydown', close);
       window.removeEventListener('blur', close);
     };
-  }, [menu]);
+  }, [menu, moreMenu]);
 
   const copyPath = async (path: string) => {
     await navigator.clipboard.writeText(path);
@@ -95,7 +120,8 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
               e.preventDefault();
               e.stopPropagation();
               setActive(t.id);
-              setMenu({ tabId: t.id, x: e.clientX, y: e.clientY });
+              const { x, y } = clampMenuToViewport(e.clientX, e.clientY, 7, true);
+              setMenu({ tabId: t.id, x, y });
             }}
             onDragStart={(e) => {
               setDraggingTabId(t.id);
@@ -179,7 +205,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
         {/* 3. 编辑模式 */}
         <button
           className={`titlebar-tool-btn titlebar-icon-btn ${isEditing ? 'titlebar-tool-active' : ''}`}
-          onClick={toggleEditing}
+          onClick={() => toggleEditing()}
           disabled={!activeTab}
           aria-label={isEditing ? '切换到预览模式' : '切换到编辑模式'}
           title={isEditing ? '预览模式 (Ctrl+E)' : '编辑模式 (Ctrl+E)'}
@@ -227,25 +253,66 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           }
         </button>
 
-        {/* 6. 主题切换 */}
+        {/* 文档操作 | 系统项 分组分隔 */}
+        <span className="titlebar-sep" aria-hidden="true" />
+
+        {/* 6. 更多(主题管理 / 无痕会话 / 关于 收纳进溢出菜单) */}
         <button
           className="titlebar-tool-btn titlebar-icon-btn"
-          onClick={onThemeManager}
-          aria-label="自定义主题"
-          title="自定义主题"
+          onClick={(e) => {
+            e.stopPropagation();
+            const { x, y } = clampMenuToViewport(e.clientX, e.clientY, 3, true);
+            setMoreMenu({ x, y });
+          }}
+          aria-label="更多选项"
+          aria-haspopup="menu"
+          title="更多选项"
         >
-          <Palette size={iconSize} strokeWidth={1.5} />
+          <MoreHorizontal size={iconSize} strokeWidth={1.5} />
         </button>
 
-        {/* 7. 关于 */}
-        <button
-          className="titlebar-tool-btn titlebar-icon-btn"
-          onClick={onAbout}
-          aria-label="关于 md++"
-          title="关于 md++"
-        >
-          <Info size={iconSize} strokeWidth={1.5} />
-        </button>
+        {/* 无痕会话进行中:常驻紫色胶囊,点击快速退出 */}
+        <AnimatePresence>
+          {isEphemeral && (
+            <motion.button
+              className="ephemeral-pill"
+              onClick={toggleEphemeral}
+              aria-pressed="true"
+              title="无痕会话进行中——关闭软件不保留本次标签页。点击退出"
+              initial={{ opacity: 0, filter: 'blur(4px)' }}
+              animate={{ opacity: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, filter: 'blur(4px)' }}
+              transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            >
+              <Ghost size={12} strokeWidth={1.5} />
+              无痕
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {moreMenu && (
+          <div
+            className="tab-context-menu"
+            style={{ left: moreMenu.x, top: moreMenu.y }}
+            role="menu"
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <button role="menuitem" onClick={() => { setMoreMenu(null); onThemeManager(); }}>
+              <Palette size={13} strokeWidth={1.5} />
+              自定义主题…
+            </button>
+            <button role="menuitem" onClick={() => { setMoreMenu(null); toggleEphemeral(); }}>
+              <Ghost size={13} strokeWidth={1.5} />
+              {isEphemeral ? '关闭无痕会话' : '开启无痕会话'}
+            </button>
+            <div className="tab-context-menu-separator" />
+            <button role="menuitem" onClick={() => { setMoreMenu(null); onAbout(); }}>
+              <Info size={13} strokeWidth={1.5} />
+              关于 md++
+            </button>
+          </div>
+        )}
       </div>
       {menu && menuTab && (
         <div
@@ -259,6 +326,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           <button role="menuitem" onClick={() => runMenuAction(() => closeTabsToLeft(menuTab.id))}>关闭左侧</button>
           <button role="menuitem" onClick={() => runMenuAction(() => closeTabsToRight(menuTab.id))}>关闭右侧</button>
           <button role="menuitem" onClick={() => runMenuAction(() => closeOtherTabs(menuTab.id))}>关闭其他</button>
+          <button role="menuitem" onClick={() => runMenuAction(() => closeAllTabs())}>关闭全部</button>
           <div className="tab-context-menu-separator" />
           <button role="menuitem" onClick={() => runMenuAction(() => openContainingFolder(menuTab.filePath))}>打开所在位置</button>
           <button role="menuitem" onClick={() => runMenuAction(() => copyPath(menuTab.filePath))}>复制文件路径</button>
