@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows, Ghost } from 'lucide-react';
+import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows, Ghost, MoreHorizontal } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useEditStore } from '../../stores/editStore';
@@ -18,6 +18,11 @@ interface TitleBarProps {
 
 interface TabMenuState {
   tabId: string;
+  x: number;
+  y: number;
+}
+
+interface SimpleMenuState {
   x: number;
   y: number;
 }
@@ -50,12 +55,13 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
   const enableRevisionMode = useRevisionStore(s => s.enableRevisionMode);
   const disableRevisionMode = useRevisionStore(s => s.disableRevisionMode);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
+  const [moreMenu, setMoreMenu] = useState<SimpleMenuState | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const menuTab = menu ? tabs.find((t) => t.id === menu.tabId) : null;
 
   useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
+    if (!menu && !moreMenu) return;
+    const close = () => { setMenu(null); setMoreMenu(null); };
     window.addEventListener('click', close);
     window.addEventListener('keydown', close);
     window.addEventListener('blur', close);
@@ -64,7 +70,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
       window.removeEventListener('keydown', close);
       window.removeEventListener('blur', close);
     };
-  }, [menu]);
+  }, [menu, moreMenu]);
 
   const copyPath = async (path: string) => {
     await navigator.clipboard.writeText(path);
@@ -183,7 +189,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
         {/* 3. 编辑模式 */}
         <button
           className={`titlebar-tool-btn titlebar-icon-btn ${isEditing ? 'titlebar-tool-active' : ''}`}
-          onClick={toggleEditing}
+          onClick={() => toggleEditing()}
           disabled={!activeTab}
           aria-label={isEditing ? '切换到预览模式' : '切换到编辑模式'}
           title={isEditing ? '预览模式 (Ctrl+E)' : '编辑模式 (Ctrl+E)'}
@@ -231,35 +237,43 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           }
         </button>
 
-        {/* 6. 主题切换 */}
-        <button
-          className="titlebar-tool-btn titlebar-icon-btn"
-          onClick={onThemeManager}
-          aria-label="自定义主题"
-          title="自定义主题"
-        >
-          <Palette size={iconSize} strokeWidth={1.5} />
-        </button>
+        {/* 文档操作 | 系统项 分组分隔 */}
+        <span className="titlebar-sep" aria-hidden="true" />
 
-        {/* 7. 无痕会话 */}
+        {/* 6. 更多(主题管理 / 无痕会话 / 关于 收纳进溢出菜单) */}
         <button
           className={`titlebar-tool-btn titlebar-icon-btn ${isEphemeral ? 'titlebar-tool-active' : ''}`}
-          onClick={toggleEphemeral}
-          aria-label={isEphemeral ? '关闭无痕会话' : '开启无痕会话'}
-          title="无痕会话：开启后关闭软件不恢复本次标签页，也不写入最近文件"
+          onClick={(e) => { e.stopPropagation(); setMoreMenu({ x: e.clientX, y: e.clientY }); }}
+          aria-label="更多选项"
+          aria-haspopup="menu"
+          title="更多选项"
         >
-          <Ghost size={iconSize} strokeWidth={1.5} />
+          <MoreHorizontal size={iconSize} strokeWidth={1.5} />
         </button>
 
-        {/* 8. 关于 */}
-        <button
-          className="titlebar-tool-btn titlebar-icon-btn"
-          onClick={onAbout}
-          aria-label="关于 md++"
-          title="关于 md++"
-        >
-          <Info size={iconSize} strokeWidth={1.5} />
-        </button>
+        {moreMenu && (
+          <div
+            className="tab-context-menu"
+            style={{ left: moreMenu.x, top: moreMenu.y }}
+            role="menu"
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <button role="menuitem" onClick={() => { setMoreMenu(null); onThemeManager(); }}>
+              <Palette size={12} strokeWidth={1.5} style={{ marginRight: 6, verticalAlign: -1.5 }} />
+              自定义主题…
+            </button>
+            <button role="menuitem" onClick={() => { setMoreMenu(null); toggleEphemeral(); }}>
+              <Ghost size={12} strokeWidth={1.5} style={{ marginRight: 6, verticalAlign: -1.5 }} />
+              {isEphemeral ? '关闭无痕会话' : '开启无痕会话'}
+            </button>
+            <div className="tab-context-menu-separator" />
+            <button role="menuitem" onClick={() => { setMoreMenu(null); onAbout(); }}>
+              <Info size={12} strokeWidth={1.5} style={{ marginRight: 6, verticalAlign: -1.5 }} />
+              关于 md++
+            </button>
+          </div>
+        )}
       </div>
       {menu && menuTab && (
         <div

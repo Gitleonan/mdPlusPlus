@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { useTabsStore } from './tabsStore';
 import { useEphemeralStore } from './ephemeralStore';
+import { useEditStore } from './editStore';
 
 // Mock Tauri API
 vi.mock('@tauri-apps/api/core', () => ({
@@ -14,6 +15,7 @@ describe('tabsStore', () => {
   beforeEach(() => {
     useTabsStore.setState({ tabs: [], activeTabId: null });
     useEphemeralStore.setState({ enabled: false });
+    useEditStore.setState({ isEditing: false, isDirty: false, lastSaveAt: 0 });
     localStorage.clear();
     invokeMock.mockResolvedValue('# Hello');
   });
@@ -149,6 +151,41 @@ describe('tabsStore', () => {
     const s = useTabsStore.getState();
     expect(s.tabs).toHaveLength(0);
     expect(s.activeTabId).toBeNull();
+  });
+
+  it('编辑模式下关闭脏 tab 需确认,取消则不关闭', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    const id = useTabsStore.getState().tabs[0].id;
+    useEditStore.setState({ isEditing: true, isDirty: true });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    useTabsStore.getState().closeTab(id);
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    confirmSpy.mockReturnValue(true);
+    useTabsStore.getState().closeTab(id);
+    expect(useTabsStore.getState().tabs).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+
+  it('非编辑模式关 tab 不弹确认', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    const id = useTabsStore.getState().tabs[0].id;
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    useTabsStore.getState().closeTab(id);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(useTabsStore.getState().tabs).toHaveLength(0);
+    confirmSpy.mockRestore();
+  });
+
+  it('editStore.toggleEditing 脏状态下需确认,取消则停留编辑', () => {
+    useEditStore.setState({ isEditing: true, isDirty: true });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    useEditStore.getState().toggleEditing();
+    expect(useEditStore.getState().isEditing).toBe(true);
+    confirmSpy.mockReturnValue(true);
+    useEditStore.getState().toggleEditing();
+    expect(useEditStore.getState().isEditing).toBe(false);
+    expect(useEditStore.getState().isDirty).toBe(false);
+    confirmSpy.mockRestore();
   });
 
   it('sets scroll position', async () => {

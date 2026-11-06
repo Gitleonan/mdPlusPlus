@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useCustomThemeStore, BUILTIN_THEMES } from '../../stores/customThemeStore';
 import templateCss from '../../themes/template.css?raw';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '../../ipc/files';
+import { Modal } from '../ui/Modal';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { useToastStore } from '../../stores/toastStore';
 
 interface ThemeManagerProps {
   open: boolean;
@@ -23,6 +25,7 @@ export function ThemeManager({ open, onClose }: ThemeManagerProps) {
   } = useCustomThemeStore();
 
   const [importing, setImporting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -41,20 +44,31 @@ export function ThemeManager({ open, onClose }: ThemeManagerProps) {
       const css = await file.text();
       const name = file.name.endsWith('.css') ? file.name : `${file.name}.css`;
       await importTheme(name, css);
+      useToastStore.getState().push(`主题「${name}」已导入`, 'success');
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('[ThemeManager] import failed:', err);
+      useToastStore.getState().push(`导入失败:${msg}`, 'error');
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleDelete = async (name: string) => {
-    if (!confirm(`确定删除主题「${name}」？`)) return;
+  // 打开确认弹窗,确认后真正删除(替换原生 confirm,统一玻璃语境)
+  const handleDelete = (name: string) => setConfirmDelete(name);
+
+  const handleDeleteConfirmed = async () => {
+    const name = confirmDelete;
+    setConfirmDelete(null);
+    if (!name) return;
     try {
       await removeTheme(name);
+      useToastStore.getState().push(`主题「${name}」已删除`, 'success');
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('[ThemeManager] delete failed:', err);
+      useToastStore.getState().push(`删除失败:${msg}`, 'error');
     }
   };
 
@@ -67,33 +81,19 @@ export function ThemeManager({ open, onClose }: ThemeManagerProps) {
       if (!path) return;
       await writeFile(path, templateCss);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('[ThemeManager] export template failed:', err);
+      useToastStore.getState().push(`导出模板失败:${msg}`, 'error');
     }
   };
 
   const noThemeActive = !activeTheme && !activeBuiltin;
 
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="about-overlay"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
-          onClick={onClose}
-        >
-          <motion.div
-            className="theme-modal"
-            initial={{ opacity: 0, scale: 0.94, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: 16 }}
-            transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-            onClick={(e) => e.stopPropagation()}
-          >
+    <>
+      <Modal open={open} onClose={onClose} labelledBy="theme-modal-title" cardClassName="theme-modal">
         <div className="theme-modal-inner">
-          <h3 className="theme-modal-title">自定义主题</h3>
+          <h3 className="theme-modal-title" id="theme-modal-title">自定义主题</h3>
           <p className="theme-modal-desc">
             选择内置主题或导入 CSS 文件，样式作用于 Markdown 正文区域。
           </p>
@@ -186,9 +186,16 @@ export function ThemeManager({ open, onClose }: ThemeManagerProps) {
             </button>
           </div>
         </div>
-      </motion.div>
-    </motion.div>
-    )}
-  </AnimatePresence>
+      </Modal>
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="删除主题"
+        message={`确定删除主题「${confirmDelete ?? ''}」?此操作不可恢复。`}
+        confirmText="删除"
+        danger
+        onConfirm={handleDeleteConfirmed}
+        onClose={() => setConfirmDelete(null)}
+      />
+    </>
   );
 }

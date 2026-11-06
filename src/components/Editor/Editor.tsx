@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useEditStore } from '../../stores/editStore';
+import { useToastStore } from '../../stores/toastStore';
 import { writeFile } from '../../ipc/files';
 import { detectEol, normalizeEol, restoreEol } from '../../utils/eol';
 import { renderMarkdown } from '../../features/markdown/render';
@@ -190,7 +191,9 @@ export function Editor() {
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 1500);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('[Editor] save failed:', err);
+      useToastStore.getState().push(`保存失败:${msg}`, 'error');
       setSaveState('idle');
     }
   }, [activeTab, markSaved, saveState]);
@@ -226,7 +229,7 @@ export function Editor() {
         <button
           className="editor-exit-btn"
           onClick={() => useEditStore.getState().toggleEditing()}
-          title="退出编辑，回到预览模式"
+          title="退出编辑，回到预览模式 (Ctrl+E)"
         >
           退出编辑
         </button>
