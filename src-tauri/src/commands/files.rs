@@ -142,7 +142,7 @@ fn get_themes_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> 
         if let Some(install_dir) = exe.parent() {
             let themes = install_dir.join("themes");
             // 判断是否在安装目录下运行：检查同目录是否存在平台可执行文件
-            // macOS: md++（位于 .app bundle 内部）; Windows: md++.exe
+            // macOS: md++（位于 .app bundle 内部）; Windows: md++.exe（由 productName + mainBinaryName 决定）
             let is_installed = if cfg!(target_os = "macos") {
                 install_dir.join("md++").exists()
             } else {
