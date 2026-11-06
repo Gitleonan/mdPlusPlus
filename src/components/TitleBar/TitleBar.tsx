@@ -258,7 +258,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
 
         {/* 6. 更多(主题管理 / 无痕会话 / 关于 收纳进溢出菜单) */}
         <button
-          className={`titlebar-tool-btn titlebar-icon-btn ${isEphemeral ? 'titlebar-tool-active' : ''}`}
+          className="titlebar-tool-btn titlebar-icon-btn"
           onClick={(e) => {
             e.stopPropagation();
             const { x, y } = clampMenuToViewport(e.clientX, e.clientY, 3, true);
@@ -270,6 +270,25 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
         >
           <MoreHorizontal size={iconSize} strokeWidth={1.5} />
         </button>
+
+        {/* 无痕会话进行中:常驻紫色胶囊,点击快速退出 */}
+        <AnimatePresence>
+          {isEphemeral && (
+            <motion.button
+              className="ephemeral-pill"
+              onClick={toggleEphemeral}
+              aria-pressed="true"
+              title="无痕会话进行中——关闭软件不保留本次标签页。点击退出"
+              initial={{ opacity: 0, filter: 'blur(4px)' }}
+              animate={{ opacity: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, filter: 'blur(4px)' }}
+              transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+            >
+              <Ghost size={12} strokeWidth={1.5} />
+              无痕
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {moreMenu && (
           <div

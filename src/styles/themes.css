@@ -2376,3 +2376,42 @@ body {
   margin: 0 2px;
   flex-shrink: 0;
 }
+
+/* ── 无痕会话:紫色 accent 家族(全局感知) ─────────────────── */
+
+:root[data-ephemeral="true"] {
+  --accent: #8b5cf6;
+  --accent-hover: #7c3aed;
+  --accent-soft: rgba(139, 92, 246, 0.14);
+}
+
+:root[data-theme="dark"][data-ephemeral="true"] {
+  --accent: #a78bfa;
+  --accent-hover: #8b5cf6;
+  --accent-soft: rgba(167, 139, 250, 0.16);
+}
+
+.ephemeral-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 10px 0 8px;
+  margin-left: 2px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  transition: background var(--t-color), color var(--t-color), border-color var(--t-color);
+}
+
+.ephemeral-pill:hover {
+  background: var(--accent);
+  color: #fff;
+}

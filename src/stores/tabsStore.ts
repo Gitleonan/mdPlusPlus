@@ -24,6 +24,8 @@ interface TabsState {
   updateSource: (id: string, source: string, html: string, toc: TocItem[]) => void;
   reloadTab: (id: string) => Promise<void>;
   restoreSession: () => Promise<void>;
+  /** 无视无痕守卫立即落盘当前 tab 集(退出无痕时的"所见即所留"基线) */
+  syncSessionNow: () => void;
 }
 
 let seq = 0;
@@ -261,6 +263,21 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       syncSessionAndWatcher(tabs, id);
       return { tabs, activeTabId: id };
     });
+  },
+
+  syncSessionNow() {
+    const s = get();
+    try {
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          paths: s.tabs.map((t) => t.filePath),
+          activePath: s.tabs.find((t) => t.id === s.activeTabId)?.filePath ?? null,
+        }),
+      );
+    } catch {
+      // localStorage 不可用时跳过
+    }
   },
 
   closeAllTabs() {
