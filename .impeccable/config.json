@@ -21,6 +21,24 @@
         ],
         "createdAt": "2026-11-06T05:33:05.781Z",
         "reason": "B-axis detector FP: revision-mode rev-add/rev-del side borders = functional Word-style diff markers, product flagship; confirmed in critique 2026-11-06"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/themes/tahoe.css"
+        ],
+        "createdAt": "2026-11-10T01:13:50.630Z",
+        "reason": "Tahoe 主题既有的 macOS Liquid Glass 引用块设计，非本次改动引入"
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "files": [
+          "src/features/export/export.ts"
+        ],
+        "createdAt": "2026-11-10T01:47:52.122Z",
+        "reason": "导出模板既有的字体选择，本次改动未触碰，超出任务范围"
       }
     ]
   }

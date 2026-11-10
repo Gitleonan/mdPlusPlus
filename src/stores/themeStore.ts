@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ThemeMode } from '../types';
+import { withThemeTransition } from '../features/theme/themeTransition';
 
 type Resolved = 'light' | 'dark';
 
@@ -24,9 +25,11 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
 
   setTheme(theme) {
     const r = resolve(theme);
-    document.documentElement.setAttribute('data-theme', r);
-    localStorage.setItem('theme', theme);
-    set({ theme, resolved: r });
+    withThemeTransition(() => {
+      document.documentElement.setAttribute('data-theme', r);
+      localStorage.setItem('theme', theme);
+      set({ theme, resolved: r });
+    });
   },
 
   toggle() {

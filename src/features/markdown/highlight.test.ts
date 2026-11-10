@@ -31,6 +31,13 @@ describe('highlightCodeBlocks', () => {
     expect(result).toContain('graph TD');
   });
 
+  it('emits dual-theme CSS variables instead of fixed colors', async () => {
+    const input = '<div class="code-block-wrapper">\n<pre><code class="language-ts">const x = 1;</code></pre>\n</div>';
+    const result = await highlightCodeBlocks(input);
+    expect(result).toContain('--shiki-light');
+    expect(result).toContain('--shiki-dark');
+  });
+
   it('handles multiple code blocks', async () => {
     const input = '<div class="code-block-wrapper">\n<pre><code class="language-ts">const a = 1;</code></pre>\n</div><div class="code-block-wrapper">\n<pre><code class="language-bash">echo hi</code></pre>\n</div>';
     const result = await highlightCodeBlocks(input, 'light');

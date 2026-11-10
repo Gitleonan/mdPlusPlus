@@ -5,6 +5,7 @@ import {
   readCustomTheme,
   deleteCustomTheme,
 } from '../ipc/files';
+import { withThemeTransition } from '../features/theme/themeTransition';
 
 // 内置主题 — 通过 ?raw 导入为字符串
 import freshCss from '../themes/fresh.css?raw';
@@ -132,18 +133,22 @@ export const useCustomThemeStore = create<CustomThemeState>((set, get) => ({
     if (name) {
       try {
         const css = await readCustomTheme(name);
-        applyCss(css);
-        // 切换到自定义主题时清除内置主题状态
-        localStorage.removeItem(BUILTIN_KEY);
-        localStorage.setItem(STORAGE_KEY, name);
-        set({ activeTheme: name, activeBuiltin: null });
+        withThemeTransition(() => {
+          applyCss(css);
+          // 切换到自定义主题时清除内置主题状态
+          localStorage.removeItem(BUILTIN_KEY);
+          localStorage.setItem(STORAGE_KEY, name);
+          set({ activeTheme: name, activeBuiltin: null });
+        });
       } catch (err) {
         console.error('[customTheme] setActive failed:', err);
       }
     } else {
-      clearCss();
-      localStorage.removeItem(STORAGE_KEY);
-      set({ activeTheme: null });
+      withThemeTransition(() => {
+        clearCss();
+        localStorage.removeItem(STORAGE_KEY);
+        set({ activeTheme: null });
+      });
     }
   },
 
@@ -151,24 +156,30 @@ export const useCustomThemeStore = create<CustomThemeState>((set, get) => ({
     if (id) {
       const found = BUILTIN_THEMES.find((t) => t.id === id);
       if (!found) return;
-      applyCss(found.css);
-      // 切换到内置主题时清除自定义主题状态
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.setItem(BUILTIN_KEY, id);
-      set({ activeBuiltin: id, activeTheme: null });
+      withThemeTransition(() => {
+        applyCss(found.css);
+        // 切换到内置主题时清除自定义主题状态
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.setItem(BUILTIN_KEY, id);
+        set({ activeBuiltin: id, activeTheme: null });
+      });
     } else {
-      clearCss();
-      localStorage.removeItem(BUILTIN_KEY);
-      set({ activeBuiltin: null });
+      withThemeTransition(() => {
+        clearCss();
+        localStorage.removeItem(BUILTIN_KEY);
+        set({ activeBuiltin: null });
+      });
     }
   },
 
   async removeTheme(name: string) {
     await deleteCustomTheme(name);
     if (get().activeTheme === name) {
-      clearCss();
-      localStorage.removeItem(STORAGE_KEY);
-      set({ activeTheme: null });
+      withThemeTransition(() => {
+        clearCss();
+        localStorage.removeItem(STORAGE_KEY);
+        set({ activeTheme: null });
+      });
     }
     await get().loadThemes();
   },

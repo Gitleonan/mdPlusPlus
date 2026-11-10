@@ -62,8 +62,10 @@ export async function renderMermaidInContainer(container: HTMLElement): Promise<
   mermaid.initialize({ startOnLoad: false, theme });
 
   for (const node of Array.from(nodes)) {
-    const source = (node.textContent || '').trim();
+    // 首次渲染后 textContent 已被 SVG 替换，源码记在 data 属性里供换主题重绘
+    const source = (node.dataset.mermaidSrc || node.textContent || '').trim();
     if (!source) continue;
+    if (!node.dataset.mermaidSrc) node.dataset.mermaidSrc = source;
 
     // 给 mermaid 一个一次性的隐藏宿主元素，render 完直接丢弃。
     // 这样 mermaid 内部的临时 <div id="d…"> 不会出现在 document.body 上。

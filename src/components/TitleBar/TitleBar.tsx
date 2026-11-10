@@ -248,8 +248,8 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           title={resolved === 'dark' ? '切换到日间模式 (Ctrl+Shift+T)' : '切换到夜间模式 (Ctrl+Shift+T)'}
         >
           {resolved === 'dark'
-            ? <Sun size={iconSize} strokeWidth={1.5} />
-            : <Moon size={iconSize} strokeWidth={1.5} />
+            ? <Sun className="theme-toggle-icon" size={iconSize} strokeWidth={1.5} />
+            : <Moon className="theme-toggle-icon" size={iconSize} strokeWidth={1.5} />
           }
         </button>
 

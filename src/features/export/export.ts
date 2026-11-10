@@ -233,6 +233,10 @@ const PRINT_CSS = `
       margin: 0;
       padding: 0;
     }
+    .table-scroll { overflow: visible; }
+    .table-hscroll { display: none; }
+    .md-tabs-nav { display: none; }
+    .md-tab-content { display: block !important; }
     pre, .code-block-wrapper, table, .mermaid, blockquote, .github-alert, .md-container {
       break-inside: avoid;
       page-break-inside: avoid;

@@ -104,7 +104,11 @@ function patchLineMarksInWrapper(wrapperHtml: string, marksJson: string): string
 /** 从 code-block-wrapper 中提取语言和代码 */
 const WRAPPER_RE = /<div class="code-block-wrapper[^>]*>[\s\S]*?<pre><code(?:\s+class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>\s*<\/div>/g;
 
-export async function highlightCodeBlocks(html: string, theme: ThemeName): Promise<string> {
+/**
+ * 双主题高亮：每个 token 同时写入 --shiki-light / --shiki-dark 两个变量，
+ * 由 [data-theme] 切换实际颜色，避免切主题时重渲染整篇文档。
+ */
+export async function highlightCodeBlocks(html: string, _theme?: ThemeName): Promise<string> {
   if (!html) return '';
 
   const hl = await getHL();
@@ -117,7 +121,11 @@ export async function highlightCodeBlocks(html: string, theme: ThemeName): Promi
 	    try {
 	      // 不先用 getLoadedLanguages() 过滤：shiki 内部会解析语言别名
 	      //（如 shell → shellscript, zsh → shellscript），提前过滤反而误杀
-	      const shikiResult = hl.codeToHtml(code, { lang, theme: themes[theme] });
+	      const shikiResult = hl.codeToHtml(code, {
+	        lang,
+	        themes: { light: themes.light, dark: themes.dark },
+	        defaultColor: false,
+	      });
 	      // 去除 shiki 自带的 background-color（inline style 会覆盖 prose.css 的 --code-bg），
 	      // 让所有代码块统一使用 CSS 变量定义的背景色
 	      const noBgResult = shikiResult.replace(

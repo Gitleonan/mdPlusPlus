@@ -40,6 +40,13 @@ function tagLinks(md: MarkdownIt): void {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TokenLike = any;
 
+/** 容器标题来自 Markdown 原文，按纯文本输出，避免 HTML 注入 */
+function escapeTitle(text: string): string {
+  return text.replace(/[&<>"]/g, (c) =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
+  );
+}
+
 /** note/info/tip/warning/caution 容器渲染 — 图标由 CSS ::before SVG 提供 */
 function containerRender(type: string): (tokens: TokenLike[], idx: number) => string {
   return (tokens, idx) => {
@@ -47,7 +54,7 @@ function containerRender(type: string): (tokens: TokenLike[], idx: number) => st
     if (token.nesting === 1) {
       const info = token.info.trim().slice(type.length).trim();
       const title = info || type.charAt(0).toUpperCase() + type.slice(1);
-      return `<div class="md-container md-container-${type}"><p class="md-container-title">${title}</p>\n`;
+      return `<div class="md-container md-container-${type}"><p class="md-container-title">${escapeTitle(title)}</p>\n`;
     }
     return '</div>\n';
   };
@@ -59,7 +66,7 @@ function detailsRender(tokens: TokenLike[], idx: number): string {
   if (token.nesting === 1) {
     const info = token.info.trim().slice('details'.length).trim();
     const title = info || 'Details';
-    return `<details class="md-details"><summary class="md-details-summary">${title}</summary>\n`;
+    return `<details class="md-details"><summary class="md-details-summary">${escapeTitle(title)}</summary>\n`;
   }
   return '</details>\n';
 }

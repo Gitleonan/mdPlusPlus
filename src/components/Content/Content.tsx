@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronUp } from 'lucide-react';
+import { AlignCenter, ChevronUp, Maximize2 } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useZenStore } from '../../stores/zenStore';
+import { useLayoutStore } from '../../stores/layoutStore';
 import { countChangeSegments, useRevisionStore } from '../../stores/revisionStore';
 import { resolveImages } from '../../ipc/files';
 import { openExternalUrl, openLocalPath } from '../../ipc/opener';
@@ -15,6 +16,8 @@ import { segmentHunks, groupChangeSegments } from '../../utils/diff';
 import { renderMarkdownWithHtml } from '../../features/markdown/render';
 import { highlightCodeBlocks } from '../../features/markdown/highlight';
 import { extractToc } from '../../features/markdown/toc';
+import { enhanceTables } from '../../features/markdown/table-resize';
+import { setupTabs } from '../../features/markdown/tabs';
 import type { RevisionHunk } from '../../types';
 
 interface ContentProps {
@@ -266,6 +269,12 @@ function RevisionPreview({
     // 增强代码块
     enhanceCodeBlocks(el);
 
+    // 表格列宽拖拽（修订预览按文件记忆）
+    enhanceTables(el, `rev:${filePath}`);
+
+    // ::: tabs 标签页
+    setupTabs(el);
+
     // 图片和 Mermaid
     Promise.all([
       resolveImages(el, filePath),
@@ -460,6 +469,8 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
   const tabIsLoading = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isLoading ?? false);
   const setScrollTop = useTabsStore((s) => s.setScrollTop);
   const isZen = useZenStore((s) => s.isZen);
+  const contentWidth = useLayoutStore((s) => s.contentWidth);
+  const toggleContentWidth = useLayoutStore((s) => s.toggleContentWidth);
 
 	// 修订模式状态
 	const isRevisionMode = useRevisionStore(s => s.isRevisionMode);
@@ -498,6 +509,12 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
 
     // 增强代码块（复制按钮 + 语言标签）
     enhanceCodeBlocks(el);
+
+    // 表格列宽拖拽（按 tab 记忆）
+    enhanceTables(el, tab.id);
+
+    // ::: tabs 标签页
+    setupTabs(el);
 
     let cancelled = false;
 
@@ -684,6 +701,16 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
           >
             <ChevronUp size={16} strokeWidth={1.5} />
           </motion.button>
+          <button
+            className="content-width-toggle"
+            onClick={toggleContentWidth}
+            title={contentWidth === 'full' ? '内容居中显示' : '内容铺满显示'}
+            aria-label={contentWidth === 'full' ? '内容居中显示' : '内容铺满显示'}
+          >
+            {contentWidth === 'full'
+              ? <AlignCenter size={16} strokeWidth={1.5} />
+              : <Maximize2 size={16} strokeWidth={1.5} />}
+          </button>
         </>
       )}
     </div>
