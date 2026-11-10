@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "md++",
   "mainBinaryName": "md++",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "identifier": "com.easymd.app",
   "build": {
     "frontendDist": "../dist",

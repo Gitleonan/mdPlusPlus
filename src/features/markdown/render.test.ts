@@ -124,6 +124,41 @@ describe('renderMarkdown', () => {
     expect(html).toContain('Hidden content');
   });
 
+  it('renders raw <details><summary> block with markdown inside', () => {
+    const html = renderMarkdown(
+      '<details>\n<summary>DDL</summary>\n\n```sql\nselect 1;\n```\n\n</details>',
+    );
+    expect(html).toContain('<details class="md-details"');
+    expect(html).toContain('<summary class="md-details-summary">DDL</summary>');
+    expect(html).toContain('language-sql');
+  });
+
+  it('renders raw details when summary is on the same line', () => {
+    const html = renderMarkdown('<details><summary>数据库 DDL</summary>\n\n内容\n\n</details>');
+    expect(html).toContain('<summary class="md-details-summary">数据库 DDL</summary>');
+    expect(html).toContain('<p>内容</p>');
+  });
+
+  it('keeps <details> inside fenced code untouched', () => {
+    const html = renderMarkdown('```html\n<details><summary>DDL</summary></details>\n```');
+    expect(html).not.toContain('md-details');
+    expect(html).toContain('&lt;details&gt;');
+  });
+
+  it('keeps pipes inside inline code from splitting table cells', () => {
+    const html = renderMarkdown(
+      '| 决策 | 键 |\n|---|---|\n| D1 | `MTR:锭号|B:批次号` |',
+    );
+    expect(html).toContain('<code>MTR:锭号|B:批次号</code>');
+    expect((html.match(/<td>/g) ?? []).length).toBe(2);
+  });
+
+  it('escapes container titles instead of injecting HTML', () => {
+    const html = renderMarkdown('::: note <img src=x onerror=alert(1)>\nbody\n:::');
+    expect(html).toContain('&lt;img');
+    expect(html).not.toContain('<img');
+  });
+
   // ── 代码块标题 ──
 
   it('renders code block with title', () => {

@@ -6,7 +6,7 @@ import { Modal } from '../ui/Modal';
 import appIcon from '../../assets/app-icon.svg';
 import featuresMd from '../../../features.md?raw';
 
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.4.1';
 const GITHUB_URL = 'https://github.com/Gitleonan/mdPlusPlus';
 
 interface AboutModalProps {

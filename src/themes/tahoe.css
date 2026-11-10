@@ -226,7 +226,7 @@
   font-size: 0.875em;
   transition: color var(--t-color), background-color var(--t-color),
     border-color var(--t-color);
-  word-break: break-word;
+  overflow-wrap: break-word;
   vertical-align: 0.05em;
 }
 

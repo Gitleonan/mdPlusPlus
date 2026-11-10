@@ -643,6 +643,11 @@ body {
   box-sizing: border-box;
 }
 
+/* 内容宽度：铺满模式只留左右边距；居中模式沿用上面的 780px 栏宽 */
+:root[data-content-width="full"] .md-content {
+  padding-inline: clamp(24px, 4vw, 72px);
+}
+
 .md-content:focus {
   outline: none;
 }
@@ -1588,6 +1593,53 @@ body {
   .monitoring-dot-ripple { display: none; }
 }
 
+/* ── 主题切换过渡 ─────────────────────────────────────────────── */
+
+/* View Transitions：整页交叉淡化，shiki 内联色与 mermaid SVG 一并过渡 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--vt-duration, 500ms);
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 过渡期间冻结逐元素 transition，避免长文档整页同时起动画 */
+html.view-transitioning,
+html.view-transitioning *,
+html.view-transitioning *::before,
+html.view-transitioning *::after {
+  transition: none !important;
+}
+
+/* 旧 WebView 降级：仅在切换的 320ms 内给颜色属性加过渡 */
+.theme-transitioning,
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition:
+    background-color 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    fill 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    stroke 320ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 320ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* 日/夜图标随切换轻微翻转入场 */
+.theme-toggle-icon {
+  animation: theme-icon-in 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes theme-icon-in {
+  from {
+    opacity: 0;
+    transform: rotate(-70deg) scale(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toggle-icon { animation: none; }
+}
+
 /* ── Theme Manager ───────────────────────────────────────────── */
 
 .theme-modal {
@@ -2147,9 +2199,9 @@ body {
 
 /* ── Back-to-Top ──────────────────────────────────────────────── */
 
-.back-to-top {
+.back-to-top,
+.content-width-toggle {
   position: absolute;
-  bottom: 48px;
   right: 24px;
   display: flex;
   align-items: center;
@@ -2167,11 +2219,57 @@ body {
   z-index: 10;
 }
 
-.back-to-top:hover {
+.back-to-top { bottom: 48px; }
+
+/* 内容宽度切换：常驻在回到顶部按钮上方 */
+.content-width-toggle { bottom: 96px; }
+
+.back-to-top:hover,
+.content-width-toggle:hover {
   color: var(--fg);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
   box-shadow: var(--shadow-md);
   background: var(--surface-raised);
+}
+
+/* ── 宽表格横向滚动条：贴在表格最上方 ───────────────────────────── */
+
+.table-hscroll {
+  position: relative;
+  height: 10px;
+  margin-bottom: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  touch-action: none;
+}
+
+.table-hscroll.is-hidden {
+  display: none;
+}
+
+.table-hscroll-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 30%, transparent);
+  cursor: grab;
+  transition: background 120ms var(--ease-out);
+}
+
+.table-hscroll:hover .table-hscroll-thumb {
+  background: color-mix(in srgb, var(--fg) 42%, transparent);
+}
+
+.table-hscroll-thumb:active {
+  cursor: grabbing;
+  background: color-mix(in srgb, var(--fg) 48%, transparent);
+}
+
+body.is-hscroll-dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 /* ── Zen Mode ─────────────────────────────────────────────────── */
@@ -2211,6 +2309,10 @@ body {
 .app-zen .back-to-top {
   bottom: 24px;
   right: 24px;
+}
+
+.app-zen .content-width-toggle {
+  bottom: 72px;
 }
 
 .zen-hint {
