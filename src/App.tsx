@@ -21,6 +21,7 @@ import { useThemeInit } from './features/theme/useThemeInit';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import { useRevisionShortcuts } from './hooks/useRevisionShortcuts';
 import { useUpdater } from './hooks/useUpdater';
+import { useUnsavedCloseGuard } from './hooks/useUnsavedCloseGuard';
 import { useRevisionStore } from './stores/revisionStore';
 import { useFileWatcher } from './features/fileWatch/useFileWatcher';
 import { getStartupFiles } from './ipc/files';
@@ -29,6 +30,7 @@ import { useThemeStore } from './stores/themeStore';
 import { useEphemeralStore } from './stores/ephemeralStore';
 import { useToastStore } from './stores/toastStore';
 import { ToastHost } from './components/Toast/Toast';
+import { DiscardConfirmDialog } from './components/ui/DiscardConfirmDialog';
 import { exportDocument, type ExportFormat } from './features/export/export';
 
 export default function App() {
@@ -42,6 +44,7 @@ export default function App() {
   useFileWatcher();
   useRevisionShortcuts();
   useUpdater();
+  useUnsavedCloseGuard();
 
   const contentRef = useRef<HTMLDivElement>(null);
   const hasTabs = useTabsStore((s) => s.tabs.length > 0);
@@ -70,6 +73,7 @@ export default function App() {
     await exportDocument({
       element: contentRef.current,
       source: activeTab.source,
+      filePath: activeTab.filePath,
       fileName: activeTab.fileName,
       theme: resolvedTheme,
       format,
@@ -109,9 +113,10 @@ export default function App() {
     }
   }, [activeTab?.id, record]);
 
-  // 切换 tab 时退出编辑模式和修订模式
+  // 切换 tab 时退出编辑模式和修订模式。
+  // setActive 已在切换前确认脏内容；这里 reset(true) 只做状态收尾。
   useEffect(() => {
-    useEditStore.getState().reset();
+    void useEditStore.getState().reset(true);
     useRevisionStore.getState().disableRevisionMode();
   }, [activeTab?.id]);
 
@@ -134,17 +139,23 @@ export default function App() {
       />}
       {hasTabs && activeTab && !isEditing && !isZen && <SearchBar contentRef={contentRef} />}
       <div className="app-body">
-        {hasTabs && activeTab && !isZen && <Sidebar toc={activeTab.toc} activeId={activeHeadingId} />}
+        {hasTabs && activeTab && !isZen && (
+          <Sidebar
+            toc={activeTab.toc}
+            activeId={activeHeadingId}
+            onSelectHeading={setActiveHeadingId}
+          />
+        )}
         <AnimatePresence mode="wait">
           {hasTabs ? (
             isEditing ? (
               <motion.div
                 key="editor"
                 style={{ flex: 1, display: 'flex', minWidth: 0 }}
-                initial={{ opacity: 0, filter: 'blur(4px)' }}
-                animate={{ opacity: 1, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, filter: 'blur(4px)' }}
-                transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
               >
                 <Editor />
               </motion.div>
@@ -152,10 +163,10 @@ export default function App() {
               <motion.div
                 key="preview"
                 style={{ flex: 1, display: 'flex', minWidth: 0 }}
-                initial={{ opacity: 0, filter: 'blur(4px)' }}
-                animate={{ opacity: 1, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, filter: 'blur(4px)' }}
-                transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
               >
                 <Content contentRef={contentRef} onActiveHeadingChange={setActiveHeadingId} />
               </motion.div>
@@ -167,6 +178,7 @@ export default function App() {
       </div>
       <Lightbox />
       <ToastHost />
+      <DiscardConfirmDialog />
       <ExportPdfModal
         open={exportModalOpen}
         fileName={activeTab?.fileName ?? null}

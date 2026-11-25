@@ -52,10 +52,10 @@ export function Modal(props: ModalProps) {
             aria-modal="true"
             aria-labelledby={labelledBy}
             ref={cardRef}
-            initial={{ opacity: 0, scale: 0.94, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: 16 }}
-            transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.18, ease: [0.32, 0.72, 0, 1] }}
           >
             {children}
           </motion.div>

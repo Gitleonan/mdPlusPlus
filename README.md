@@ -85,7 +85,7 @@ Windows 下也一直没有好用的 Markdown 预览工具。想快速看一眼 `
 
 | 平台 | 格式 | 系统要求 |
 |------|------|----------|
-| Windows | `.msi` | Windows 10 1809+（需 WebView2 运行时，Win11 默认自带） |
+| Windows | `.exe`（NSIS） | Windows 10 1809+（需 WebView2 运行时，Win11 默认自带） |
 | macOS | `.dmg` | macOS 11.0+ (Big Sur) |
 
 安装后可自动注册 `.md` / `.markdown` 文件的右键菜单 **"用 md++ 打开"**
@@ -158,7 +158,7 @@ pnpm tauri build
 ```
 
 产物位于 `src-tauri/target/release/bundle/`：
-- **Windows** — `.msi` 安装包
+- **Windows** — `.exe`（NSIS）安装包
 - **macOS** — `.dmg` 磁盘映像
 
 ---

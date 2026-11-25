@@ -1,7 +1,11 @@
 mod commands;
+mod local_images;
 mod watcher;
 
-use tauri::{Emitter, Manager, RunEvent};
+use local_images::ImageScope;
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+use tauri::RunEvent;
+use tauri::{Emitter, Manager};
 use watcher::WatcherState;
 
 /// 判断路径是否以 .md / .markdown 结尾（不区分大小写，Windows 上 README.MD 很常见）
@@ -21,6 +25,7 @@ fn collect_md_files(args: Vec<String>) -> Vec<String> {
 /// 把 macOS Apple Event 传来的 file:// URL 转成本地路径，并只保留 .md / .markdown。
 /// macOS 访达打开文件时，文件路径以 `file://...%20...` 形式经 `application:openURLs:`
 /// 传入，既不在 argv 里，也需要 percent-decode 才能拿到真实路径。
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 fn urls_to_md_paths(urls: Vec<url::Url>) -> Vec<String> {
     urls.into_iter()
         .filter(|u| u.scheme() == "file")
@@ -29,7 +34,6 @@ fn urls_to_md_paths(urls: Vec<url::Url>) -> Vec<String> {
         .map(|p| p.to_string_lossy().to_string())
         .collect()
 }
-
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -66,8 +70,7 @@ pub fn run() {
 
     builder = builder
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init());
+        .plugin(tauri_plugin_dialog::init());
 
     // 自动更新仅在桌面端可用：移动端走各自应用商店的更新机制。
     #[cfg(not(mobile))]
@@ -80,6 +83,11 @@ pub fn run() {
     builder
         .manage(commands::files::StartupFiles::new(startup_files))
         .manage(WatcherState::new())
+        .manage(ImageScope::default())
+        .register_uri_scheme_protocol("mdpp-img", |ctx, request| {
+            let scope = ctx.app_handle().state::<ImageScope>();
+            local_images::handle_image_protocol(&scope, &request)
+        })
         .setup(|app| {
             // debug 模式启用日志
             if cfg!(debug_assertions) {
@@ -96,7 +104,8 @@ pub fn run() {
             commands::files::read_text_file,
             commands::files::get_startup_files,
             commands::files::write_text_file,
-            commands::files::resolve_image,
+            local_images::resolve_image_urls,
+            local_images::read_images_as_data_urls,
             commands::files::list_custom_themes,
             commands::files::save_custom_theme,
             commands::files::read_custom_theme,
@@ -105,19 +114,19 @@ pub fn run() {
             commands::opener::open_containing_folder,
             commands::opener::open_file_with_system,
             commands::opener::check_file_association,
-        commands::opener::register_file_association,
+            commands::opener::register_file_association,
             commands::recent::list_recent,
             commands::recent::add_recent,
             watcher::watch_files,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
+        .run(|app_handle, _event| {
             // macOS：访达双击打开 .md 时，文件路径经 Apple Event
             // `application:openURLs:` 传入，既不在 argv 里（导致 argv 方案失效），
             // 也需把 file:// URL 解析为本地路径。这里统一捕获并转发给前端。
             #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-            if let RunEvent::Opened { urls } = event {
+            if let RunEvent::Opened { urls } = _event {
                 let files = urls_to_md_paths(urls);
                 if !files.is_empty() {
                     // 已运行实例的前端早已挂载监听，可直接 emit；冷启动时前端可能尚未就绪，
@@ -168,6 +177,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
     #[test]
     fn turns_finder_file_urls_into_decoded_local_paths() {
         let urls = vec![

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-md++ (package name: `mdplusplus`) is a lightweight Markdown viewer and editor for Windows and macOS, built with Tauri v2 (Rust backend + React/TypeScript frontend). Licensed MIT, version 0.2.0.
+md++ (package name: `mdplusplus`) is a lightweight Markdown viewer and editor for Windows and macOS, built with Tauri v2 (Rust backend + React/TypeScript frontend). Licensed MIT, version 0.5.0.
 
 ## Commands
 
@@ -17,14 +17,14 @@ pnpm test                 # Run frontend tests (vitest run)
 pnpm test:watch           # Frontend tests in watch mode
 pnpm test -- src/stores/tabsStore.test.ts  # Run single test file
 cd src-tauri && cargo test  # Run Rust backend tests
-pnpm tauri build          # Production build (MSI + NSIS installers)
+pnpm tauri build          # Production build (NSIS installer on Windows, DMG on macOS)
 ```
 
 First `pnpm tauri dev` compiles Rust dependencies (~5-10 min); subsequent starts are fast.
 
 ## CI/CD
 
-- **CI** (`.github/workflows/ci.yml`) — push/PR to main 触发，跑前端测试 + 构建检查
+- **CI** (`.github/workflows/ci.yml`) — push/PR 到 `main`/`dev` 触发，跑类型检查、前端测试、构建检查与 Rust 测试
 - **Release** (`.github/workflows/release.yml`) — push `v*` tag 触发，自动构建安装包并创建 Draft Release
 - Release 发布流程：改版本号 → `node scripts/sync-version.mjs` → `git tag v0.x.x` → `git push origin v0.x.x` → GitHub Actions 自动构建 → 手动 Publish
 - **自动更新**：完全托管在 GitHub Releases，详见 `AUTO_UPDATE.md`。要点：
@@ -55,7 +55,8 @@ macOS will use `⌘` instead of `Ctrl`.
 ### Backend (src-tauri/src/)
 
 - `lib.rs` — Tauri Builder setup, plugin registration, CLI arg parsing, emits `open-on-startup` event
-- `commands/files.rs` — `read_text_file`, `write_file`, `resolve_image` (local images → base64 data URLs)
+- `commands/files.rs` — `read_text_file`, `write_text_file`, custom theme and startup-file commands
+- `local_images.rs` — `mdpp-img` 自定义协议：批量解析本地图片 URL，只读文档目录内的图片扩展名
 - `commands/recent.rs` — `list_recent`/`add_recent` persisted to `recent.json` in app data dir
 - `commands/opener.rs` — `open_containing_folder`, `check_file_association`, `register_file_association` (file association management)
 - `watcher.rs` — `notify` crate with 300ms debounce, emits `file-changed` events to frontend
@@ -63,9 +64,9 @@ macOS will use `⌘` instead of `Ctrl`.
 ### Frontend (src/)
 
 - `App.tsx` — Root layout orchestrator, wires hooks: `useOpenFile`, `useThemeInit`, `useGlobalShortcuts`, `useFileWatcher`, `useRevisionShortcuts`
-- `stores/tabsStore.ts` — Core state: tab CRUD, active tab, scroll memory, file reading + rendering pipeline
+- `stores/tabsStore.ts` — Core state: tab CRUD, active tab, scroll memory, lazy session restore, file reading + rendering pipeline
 - `stores/revisionStore.ts` — Revision mode state: track changes, navigate between diffs
-- `features/markdown/render.ts` — Main rendering entry: markdown-it → shiki → mermaid → image resolution → DOM injection
+- `features/markdown/render.ts` — Safe HTML + TOC in one parse; Shiki/Mermaid/image resolution happen later in `Content`
 - `features/export/export.ts` — Document export: PDF (via system print), HTML, Markdown
 - `utils/diff.ts` — Line-level diff computation using `diff` package
 - `ipc/` — Tauri command wrappers (`invoke` calls)
@@ -73,10 +74,11 @@ macOS will use `⌘` instead of `Ctrl`.
 ### Markdown Rendering Pipeline
 
 ```
-Source → markdown-it (katex, task-lists, footnote, mark, linkify, emoji, containers, tabs)
-      → shiki code highlighting
+Source → markdown-it (katex, task-lists, footnote, mark, linkify, emoji, containers, tabs; raw HTML disabled)
+      → first paint with safe, unhighlighted code blocks
+      → background shiki highlighting (dynamic import, chunked per code block)
       → mermaid async rendering
-      → image resolution (local paths → base64 via Rust)
+      → image resolution (local paths → `mdpp-img://` protocol via one batched IPC)
       → DOM injection + post-processing (anchors, copy buttons, lightbox)
 ```
 
@@ -87,7 +89,7 @@ Revision mode allows users to track and navigate changes in markdown files:
 - **Activation**: `Ctrl+Shift+R` or click the revision icon in TitleBar
 - **State**: `revisionStore` manages revision history, current revision, and segment navigation
 - **Diff computation**: `utils/diff.ts` uses the `diff` package for line-level diffing
-- **Rendering**: `renderMarkdownWithHtml()` allows HTML comments for injecting highlight markers
+- **Rendering**: revision preview reuses safe `renderMarkdown()`; navigation only scrolls, never rebuilds the preview
 - **Types**: `RevisionHunk`, `Revision` in `types/index.ts`
 - **Navigation**: Navigate between change segments within and across revisions
 
@@ -111,7 +113,7 @@ Revision mode allows users to track and navigate changes in markdown files:
 
 ## Key Conventions
 
-- **Package manager:** pnpm (v9+), not npm/yarn
+- **Package manager:** pnpm 11.8.0 with Node 22.13+, not npm/yarn
 - **Dev server port:** 14300 (avoids Windows reserved ports 1394-1493 for Hyper-V/WSL)
 - **TypeScript types:** Shared types in `src/types/index.ts` (Tab, TocItem, RecentFile, ThemeMode, Revision, RevisionHunk)
 - **IPC pattern:** All Tauri commands wrapped in `src/ipc/` files, never called raw from components
@@ -133,7 +135,7 @@ Revision mode allows users to track and navigate changes in markdown files:
 - **Search** — Full-text search with match navigation
 - **Table of Contents** — Sidebar TOC with active heading tracking
 - **Lightbox** — Image preview with zoom
-- **Syntax highlighting** — Shiki-based code highlighting with 100+ languages
+- **Syntax highlighting** — Shiki-based, lazily loaded highlighting for the bundled common languages
 - **Mermaid diagrams** — Render Mermaid flowcharts, sequence diagrams, etc.
 - **KaTeX math** — LaTeX math expressions rendering
 - **GitHub Alerts** — Support for `> [!NOTE]`, `> [!TIP]`, etc.

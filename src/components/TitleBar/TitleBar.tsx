@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows, Ghost, MoreHorizontal, ArrowUpCircle } from 'lucide-react';
+import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows, Ghost, MoreHorizontal, ArrowUpCircle, FileText } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useEditStore } from '../../stores/editStore';
@@ -101,7 +101,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
     Promise.resolve(action()).catch((err) => console.error('[tab menu] action failed', err));
   };
 
-  const handleToggleMonitoring = () => {
+  const handleToggleMonitoring = async () => {
     if (isMonitoring) {
       disableRevisionMode();
     } else if (activeTab) {
@@ -109,93 +109,96 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
     }
   };
 
+  const menuMotion = {
+    initial: { opacity: 0, y: -2 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -2 },
+    transition: { duration: 0.14, ease: [0.32, 0.72, 0, 1] as [number, number, number, number] },
+  };
+
   return (
     <header className="titlebar">
-      <button className="titlebar-open-btn" onClick={openViaDialog} title="打开文件 (Ctrl+O)">
-        <Plus className="titlebar-icon" size={iconSize} strokeWidth={1.5} />
+      <button
+        className="titlebar-open-btn"
+        onClick={openViaDialog}
+        title="打开文件 (Ctrl+O)"
+        aria-label="打开文件"
+      >
+        <Plus className="titlebar-icon" size={iconSize} strokeWidth={1.7} />
       </button>
       <div className="titlebar-tabs">
-        {tabs.map((t) => (
-          <div
-            key={t.id}
-            className={`titlebar-tab ${t.id === activeTabId ? 'active' : ''} ${t.id === draggingTabId ? 'dragging' : ''}`}
-            draggable
-            onClick={() => setActive(t.id)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setActive(t.id);
-              const { x, y } = clampMenuToViewport(e.clientX, e.clientY, 7, true);
-              setMenu({ tabId: t.id, x, y });
-            }}
-            onDragStart={(e) => {
-              setDraggingTabId(t.id);
-              e.dataTransfer.effectAllowed = 'move';
-              e.dataTransfer.setData('text/plain', t.id);
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'move';
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              const sourceId = e.dataTransfer.getData('text/plain') || draggingTabId;
-              if (sourceId) moveTab(sourceId, t.id);
-              setDraggingTabId(null);
-            }}
-            onDragEnd={() => setDraggingTabId(null)}
-          >
-            <span className="titlebar-tab-name">{t.fileName}</span>
-            <button
-              className="titlebar-tab-close"
-              onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
-              aria-label="关闭"
+        {tabs.map((t) => {
+          const isActive = t.id === activeTabId;
+          return (
+            <div
+              key={t.id}
+              className={`titlebar-tab ${isActive ? 'active' : ''} ${t.id === draggingTabId ? 'dragging' : ''}`}
+              draggable
+              onClick={() => { void setActive(t.id); }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void setActive(t.id).then(() => {
+                  if (useTabsStore.getState().activeTabId !== t.id) return;
+                  const { x, y } = clampMenuToViewport(e.clientX, e.clientY, 7, true);
+                  setMenu({ tabId: t.id, x, y });
+                });
+              }}
+              onDragStart={(e) => {
+                setDraggingTabId(t.id);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', t.id);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const sourceId = e.dataTransfer.getData('text/plain') || draggingTabId;
+                if (sourceId) moveTab(sourceId, t.id);
+                setDraggingTabId(null);
+              }}
+              onDragEnd={() => setDraggingTabId(null)}
             >
-              <X size={12} strokeWidth={2} />
-            </button>
-          </div>
-        ))}
+              {isActive && (
+                <motion.span
+                  layoutId="titlebar-active-tab-pill"
+                  className="titlebar-tab-active-bg"
+                  transition={{ type: 'spring', stiffness: 460, damping: 34, mass: 0.8 }}
+                />
+              )}
+              <FileText className="titlebar-tab-icon" size={12} strokeWidth={1.7} aria-hidden="true" />
+              <span className="titlebar-tab-name">{t.fileName}</span>
+              <button
+                className="titlebar-tab-close"
+                onClick={(e) => { e.stopPropagation(); void closeTab(t.id); }}
+                aria-label="关闭"
+              >
+                <X size={11} strokeWidth={2} />
+              </button>
+            </div>
+          );
+        })}
       </div>
       <div className="titlebar-tools">
-        {/* 1. 监听变更 — Framer Motion 驱动 switch 按钮 */}
-        <motion.button
-          className="titlebar-switch-btn"
-          onClick={handleToggleMonitoring}
+        {/* 1. 监听变更 */}
+        <button
+          className={`titlebar-switch-btn ${isMonitoring ? 'titlebar-switch-btn-on' : ''}`}
+          onClick={() => { void handleToggleMonitoring(); }}
           disabled={!activeTab}
           aria-label={isMonitoring ? '停止监听变更' : '开始监听变更'}
           title={isMonitoring ? '停止监听变更 (Ctrl+Shift+R)' : '监听变更 (Ctrl+Shift+R)'}
-          whileHover={!activeTab ? undefined : { scale: 1.04 }}
-          whileTap={!activeTab ? undefined : { scale: 0.96 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
         >
-          {/* 图标 */}
-          <motion.span
-            className={isMonitoring ? 'switch-icon-on' : ''}
-            animate={isMonitoring ? { rotate: [0, 15, 0] } : { rotate: 0 }}
-            transition={{
-              duration: isMonitoring ? 3.6 : 0.25,
-              repeat: isMonitoring ? Infinity : 0,
-              ease: [0.32, 0.72, 0, 1],
-            }}
-            style={{ display: 'inline-flex', alignItems: 'center' }}
-          >
-            <GitCompareArrows size={iconSize} strokeWidth={1} />
-          </motion.span>
+          <span className={isMonitoring ? 'switch-icon-on' : ''} style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <GitCompareArrows size={iconSize} strokeWidth={1.5} />
+          </span>
+          <span className={isMonitoring ? 'switch-label-on' : ''}>
+            {isMonitoring ? '监听中' : '监听变更'}
+          </span>
+        </button>
 
-          {/* 文字标签 */}
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={isMonitoring ? 'on' : 'off'}
-              className={isMonitoring ? 'switch-label-on' : ''}
-              initial={{ opacity: 0, y: 6, filter: 'blur(2px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, y: -6, filter: 'blur(2px)' }}
-              transition={{ duration: 0.25, ease: [0.32, 0.72, 0, 1] }}
-            >
-              {isMonitoring ? '监听中' : '监听变更'}
-            </motion.span>
-          </AnimatePresence>
-        </motion.button>
+        <span className="titlebar-sep" aria-hidden="true" />
 
         {/* 2. Zen 模式 */}
         <button
@@ -204,43 +207,47 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           aria-label={isZen ? '退出专注模式' : '专注模式'}
           title={isZen ? '退出专注模式 (Ctrl+Shift+Z)' : '专注模式 (Ctrl+Shift+Z)'}
         >
-          <ScanEye size={iconSize} strokeWidth={1.5} />
+          <ScanEye size={iconSize} strokeWidth={1.6} />
         </button>
 
         {/* 3. 编辑模式 */}
         <button
           className={`titlebar-tool-btn titlebar-icon-btn ${isEditing ? 'titlebar-tool-active' : ''}`}
-          onClick={() => toggleEditing()}
-          disabled={!activeTab}
+          onClick={() => { void toggleEditing(); }}
+          disabled={!activeTab || (!isEditing && Boolean(activeTab.loadError))}
           aria-label={isEditing ? '切换到预览模式' : '切换到编辑模式'}
-          title={isEditing ? '预览模式 (Ctrl+E)' : '编辑模式 (Ctrl+E)'}
+          title={
+            !isEditing && activeTab?.loadError
+              ? '文件读取失败，无法编辑'
+              : isEditing ? '预览模式 (Ctrl+E)' : '编辑模式 (Ctrl+E)'
+          }
         >
           {isEditing
-            ? <Eye size={iconSize} strokeWidth={1.5} />
-            : <Pencil size={iconSize} strokeWidth={1.5} />
+            ? <Eye size={iconSize} strokeWidth={1.6} />
+            : <Pencil size={iconSize} strokeWidth={1.6} />
           }
         </button>
 
         {/* 4. 刷新 */}
         <button
           className="titlebar-tool-btn titlebar-icon-btn"
-          onClick={() => activeTab && reloadTab(activeTab.id)}
+          onClick={() => { if (activeTab) void reloadTab(activeTab.id); }}
           disabled={!activeTab}
           aria-label="重新载入当前文件"
           title="重新载入当前文件"
         >
-          <RotateCw size={iconSize} strokeWidth={1.5} />
+          <RotateCw size={iconSize} strokeWidth={1.6} />
         </button>
 
         {/* 导出 */}
         {activeTab && (
           <button
-            className="titlebar-tool-btn"
+            className="titlebar-tool-btn titlebar-export-btn"
             onClick={onExport}
             title={isEditing ? '预览模式下才可导出' : '导出 (Ctrl+P)'}
             disabled={isEditing}
           >
-            <Download size={iconSize} strokeWidth={1.5} />
+            <Download size={iconSize} strokeWidth={1.6} />
             <span>导出</span>
           </button>
         )}
@@ -253,8 +260,8 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           title={resolved === 'dark' ? '切换到日间模式 (Ctrl+Shift+T)' : '切换到夜间模式 (Ctrl+Shift+T)'}
         >
           {resolved === 'dark'
-            ? <Sun className="theme-toggle-icon" size={iconSize} strokeWidth={1.5} />
-            : <Moon className="theme-toggle-icon" size={iconSize} strokeWidth={1.5} />
+            ? <Sun key="sun" className="theme-toggle-icon" size={iconSize} strokeWidth={1.6} />
+            : <Moon key="moon" className="theme-toggle-icon" size={iconSize} strokeWidth={1.6} />
           }
         </button>
 
@@ -268,20 +275,12 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
               className="update-pill"
               onClick={openUpdateDialog}
               title={`发现新版本 v${updateVersion},点击查看`}
-              initial={{ opacity: 0, scale: 0.85, y: -4 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.85, y: -4 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 26 }}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.14 }}
             >
-              <motion.span
-                animate={{ y: [0, -2, 0] }}
-                transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ display: 'inline-flex' }}
-              >
-                <ArrowUpCircle size={12} strokeWidth={2} />
-              </motion.span>
+              <ArrowUpCircle size={12} strokeWidth={2} />
               v{updateVersion}
             </motion.button>
           )}
@@ -289,7 +288,7 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
 
         {/* 6. 更多(主题管理 / 无痕会话 / 关于 收纳进溢出菜单) */}
         <button
-          className="titlebar-tool-btn titlebar-icon-btn"
+          className={`titlebar-tool-btn titlebar-icon-btn ${moreMenu ? 'titlebar-tool-active' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
             const { x, y } = clampMenuToViewport(e.clientX, e.clientY, 3, true);
@@ -299,10 +298,10 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
           aria-haspopup="menu"
           title="更多选项"
         >
-          <MoreHorizontal size={iconSize} strokeWidth={1.5} />
+          <MoreHorizontal size={iconSize} strokeWidth={1.6} />
         </button>
 
-        {/* 无痕会话进行中:常驻紫色胶囊,点击快速退出 */}
+        {/* 无痕会话进行中:常驻胶囊,点击快速退出 */}
         <AnimatePresence>
           {isEphemeral && (
             <motion.button
@@ -310,59 +309,65 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
               onClick={toggleEphemeral}
               aria-pressed="true"
               title="无痕会话进行中——关闭软件不保留本次标签页。点击退出"
-              initial={{ opacity: 0, filter: 'blur(4px)' }}
-              animate={{ opacity: 1, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, filter: 'blur(4px)' }}
-              transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
             >
-              <Ghost size={12} strokeWidth={1.5} />
+              <Ghost size={12} strokeWidth={1.6} />
               无痕
             </motion.button>
           )}
         </AnimatePresence>
 
-        {moreMenu && (
-          <div
+        <AnimatePresence>
+          {moreMenu && (
+            <motion.div
+              className="tab-context-menu"
+              style={{ left: moreMenu.x, top: moreMenu.y }}
+              role="menu"
+              {...menuMotion}
+              onClick={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <button role="menuitem" onClick={() => { setMoreMenu(null); onThemeManager(); }}>
+                <Palette size={13} strokeWidth={1.6} />
+                自定义主题…
+              </button>
+              <button role="menuitem" onClick={() => { setMoreMenu(null); toggleEphemeral(); }}>
+                <Ghost size={13} strokeWidth={1.6} />
+                {isEphemeral ? '关闭无痕会话' : '开启无痕会话'}
+              </button>
+              <div className="tab-context-menu-separator" />
+              <button role="menuitem" onClick={() => { setMoreMenu(null); onAbout(); }}>
+                <Info size={13} strokeWidth={1.6} />
+                关于 md++
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+      <AnimatePresence>
+        {menu && menuTab && (
+          <motion.div
             className="tab-context-menu"
-            style={{ left: moreMenu.x, top: moreMenu.y }}
+            style={{ left: menu.x, top: menu.y }}
             role="menu"
+            {...menuMotion}
             onClick={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
           >
-            <button role="menuitem" onClick={() => { setMoreMenu(null); onThemeManager(); }}>
-              <Palette size={13} strokeWidth={1.5} />
-              自定义主题…
-            </button>
-            <button role="menuitem" onClick={() => { setMoreMenu(null); toggleEphemeral(); }}>
-              <Ghost size={13} strokeWidth={1.5} />
-              {isEphemeral ? '关闭无痕会话' : '开启无痕会话'}
-            </button>
+            <button role="menuitem" onClick={() => runMenuAction(() => closeTab(menuTab.id))}>关闭当前</button>
+            <button role="menuitem" onClick={() => runMenuAction(() => closeTabsToLeft(menuTab.id))}>关闭左侧</button>
+            <button role="menuitem" onClick={() => runMenuAction(() => closeTabsToRight(menuTab.id))}>关闭右侧</button>
+            <button role="menuitem" onClick={() => runMenuAction(() => closeOtherTabs(menuTab.id))}>关闭其他</button>
+            <button role="menuitem" onClick={() => runMenuAction(() => closeAllTabs())}>关闭全部</button>
             <div className="tab-context-menu-separator" />
-            <button role="menuitem" onClick={() => { setMoreMenu(null); onAbout(); }}>
-              <Info size={13} strokeWidth={1.5} />
-              关于 md++
-            </button>
-          </div>
+            <button role="menuitem" onClick={() => runMenuAction(() => openContainingFolder(menuTab.filePath))}>打开所在位置</button>
+            <button role="menuitem" onClick={() => runMenuAction(() => copyPath(menuTab.filePath))}>复制文件路径</button>
+          </motion.div>
         )}
-      </div>
-      {menu && menuTab && (
-        <div
-          className="tab-context-menu"
-          style={{ left: menu.x, top: menu.y }}
-          role="menu"
-          onClick={(e) => e.stopPropagation()}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          <button role="menuitem" onClick={() => runMenuAction(() => closeTab(menuTab.id))}>关闭当前</button>
-          <button role="menuitem" onClick={() => runMenuAction(() => closeTabsToLeft(menuTab.id))}>关闭左侧</button>
-          <button role="menuitem" onClick={() => runMenuAction(() => closeTabsToRight(menuTab.id))}>关闭右侧</button>
-          <button role="menuitem" onClick={() => runMenuAction(() => closeOtherTabs(menuTab.id))}>关闭其他</button>
-          <button role="menuitem" onClick={() => runMenuAction(() => closeAllTabs())}>关闭全部</button>
-          <div className="tab-context-menu-separator" />
-          <button role="menuitem" onClick={() => runMenuAction(() => openContainingFolder(menuTab.filePath))}>打开所在位置</button>
-          <button role="menuitem" onClick={() => runMenuAction(() => copyPath(menuTab.filePath))}>复制文件路径</button>
-        </div>
-      )}
+      </AnimatePresence>
     </header>
   );
 }

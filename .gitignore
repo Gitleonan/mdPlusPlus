@@ -44,3 +44,8 @@ coverage/
 .omc/
 .omx/
 docs/
+
+# 本地发布产物与临时复现目录
+release-artifacts/
+tmp-repro/
+formula-syntax-test.md

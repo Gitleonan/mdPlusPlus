@@ -3,6 +3,7 @@ import { useRecentStore } from '../../stores/recentStore';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { FolderOpen, FileText } from 'lucide-react';
 import { modKey } from '../../utils/platform';
 import appIcon from '../../assets/app-icon.svg';
 
@@ -36,52 +37,49 @@ export function Welcome() {
 
   useEffect(() => { load(); }, [load]);
 
-  const item = {
-    hidden: { opacity: 0, y: 16, filter: 'blur(4px)' },
-    visible: { opacity: 1, y: 0, filter: 'blur(0px)' },
-  };
-
   return (
     <div className="welcome">
       <motion.div
         className="welcome-inner"
-        initial="hidden"
-        animate="visible"
-        variants={{
-          visible: { transition: { staggerChildren: 0.08 } },
-        }}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
       >
-        <motion.img className="welcome-icon" variants={item} src={appIcon} alt="" aria-hidden="true" />
-        <motion.h1 className="welcome-title" variants={item}>md++</motion.h1>
-        <motion.p className="welcome-subtitle" variants={item}>轻量便捷的 Markdown 阅读器</motion.p>
-        <motion.div variants={item}>
-          <button className="welcome-open-btn" onClick={openViaDialog}>
-            打开 Markdown 文件
-          </button>
-        </motion.div>
-        <motion.p className="welcome-hint" variants={item}>或将 .md 文件拖入窗口</motion.p>
-        <motion.p className="welcome-shortcut" variants={item}>{modKey()}+O 打开文件</motion.p>
+        <img className="welcome-icon" src={appIcon} alt="" aria-hidden="true" />
+        <h1 className="welcome-title">md++</h1>
+        <button className="welcome-open-btn" onClick={openViaDialog}>
+          <FolderOpen size={15} strokeWidth={1.9} aria-hidden="true" />
+          <span>打开 Markdown 文件</span>
+        </button>
+        <p className="welcome-hint">或将 .md 文件拖入窗口</p>
+        <p className="welcome-shortcut">
+          <kbd className="welcome-kbd">{modKey()}</kbd>
+          <span>+</span>
+          <kbd className="welcome-kbd">O</kbd>
+        </p>
 
         {files.length > 0 && (
-          <motion.div className="welcome-recent" variants={item}>
-            <div className="welcome-recent-header">
-              <h3>最近打开</h3>
-              <span>启动时快速回到上次阅读</span>
-            </div>
+          <div className="welcome-recent">
+            <h3>最近打开</h3>
             <ul>
               {files.slice(0, 10).map((f) => (
                 <li key={f.path}>
                   <button className="welcome-recent-item" onClick={() => openTab(f.path)}>
-                    <span className="welcome-recent-main">
-                      <span className="welcome-recent-name">{f.name}</span>
-                      <span className="welcome-recent-time">{formatRecentOpenedAt(f.lastOpenedAt)}</span>
+                    <span className="welcome-recent-icon" aria-hidden="true">
+                      <FileText size={14} strokeWidth={1.6} />
                     </span>
-                    <span className="welcome-recent-path" title={f.path}>{f.path}</span>
+                    <span className="welcome-recent-body">
+                      <span className="welcome-recent-main">
+                        <span className="welcome-recent-name">{f.name}</span>
+                        <span className="welcome-recent-time">{formatRecentOpenedAt(f.lastOpenedAt)}</span>
+                      </span>
+                      <span className="welcome-recent-path" title={f.path}>{f.path}</span>
+                    </span>
                   </button>
                 </li>
               ))}
             </ul>
-          </motion.div>
+          </div>
         )}
       </motion.div>
     </div>

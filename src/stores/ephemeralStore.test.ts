@@ -38,7 +38,7 @@ describe('ephemeralStore', () => {
   it('退出无痕时以当前 tab 集立即落盘(所见即所留)', () => {
     useTabsStore.setState({
       tabs: [
-        { id: 't1', filePath: 'C:\\a.md', fileName: 'a.md', source: '', html: '', toc: [], scrollTop: 0, tocExpanded: {}, isLoading: false },
+        { id: 't1', filePath: 'C:\\a.md', fileName: 'a.md', source: '', html: '', highlightComplete: true, toc: [], tocExpanded: {}, isLoading: false },
       ],
       activeTabId: 't1',
     });

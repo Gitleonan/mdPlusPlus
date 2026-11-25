@@ -4,9 +4,7 @@ import { useEditStore } from '../../stores/editStore';
 import { useToastStore } from '../../stores/toastStore';
 import { writeFile } from '../../ipc/files';
 import { detectEol, normalizeEol, restoreEol } from '../../utils/eol';
-import { renderMarkdown } from '../../features/markdown/render';
-import { highlightCodeBlocks } from '../../features/markdown/highlight';
-import { extractToc } from '../../features/markdown/toc';
+import { renderMarkdownDocument } from '../../features/markdown/render';
 
 /**
  * 对 Markdown 单行源码做轻量正则着色。
@@ -106,6 +104,10 @@ export function Editor() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const highlightedLinesRef = useRef<string[]>([]);
+  /** 上次同步的 tab 与正文，用于识别目标切换和非脏状态下的外部更新。 */
+  const syncedTabIdRef = useRef<string | null>(null);
+  /** 上次同步到 textarea 的正文，用于区分外部更新与用户自己的输入。 */
+  const syncedSourceRef = useRef('');
   const activeTab = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeTabId));
   const isDirty = useEditStore((s) => s.isDirty);
   const setDirty = useEditStore((s) => s.setDirty);
@@ -125,23 +127,34 @@ export function Editor() {
     }
   }, []);
 
-  // 同步初始内容到 textarea + 首次高亮
+  // 同步初始内容、编辑目标变化，以及非脏状态下的外部正文更新。
+  //
+  // 用户正在编辑时，textarea 才是当前草稿；只有用户确认刷新或当前文档
+  // 未修改时才允许用 store 中的 source 覆盖它，避免外部 watcher 悄悄丢改动。
   useEffect(() => {
     if (textareaRef.current && activeTab) {
-      // 高亮层与 textarea 用同一份归一化文本，避免每行尾残留 \r 以及首次按键时全量重建
       const normalized = normalizeEol(activeTab.source);
+      const targetChanged = syncedTabIdRef.current !== activeTab.id;
+      const externalChanged = normalized !== syncedSourceRef.current;
+      const shouldSync = targetChanged || (!isDirty && externalChanged);
+      if (!shouldSync) return;
+      // 高亮层与 textarea 用同一份归一化文本，避免每行尾残留 \r 以及首次按键时全量重建
+      syncedTabIdRef.current = activeTab.id;
+      syncedSourceRef.current = normalized;
       textareaRef.current.value = normalized;
-      textareaRef.current.scrollTop = activeTab.scrollTop;
+      const scrollTop = useTabsStore.getState().getScrollTop(activeTab.id);
+      textareaRef.current.scrollTop = scrollTop;
       if (preRef.current) {
-        preRef.current.style.transform = `translateY(-${activeTab.scrollTop}px)`;
+        preRef.current.style.transform = `translateY(-${scrollTop}px)`;
       }
       updateHighlight(normalized);
-      setDirty(false);
+      // 只有刚进入编辑/切换目标时才重置脏标记；非脏状态下跟随外部刷新
+      // 不应改动 editStore，避免和用户下一次输入的状态提交交错。
+      if (targetChanged && isDirty) setDirty(false);
     }
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-    };
-  }, [activeTab?.id, updateHighlight, setDirty]);
+  }, [activeTab?.id, activeTab?.source, isDirty, updateHighlight, setDirty]);
+
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
   const handleChange = useCallback(() => {
     setDirty(true);
@@ -150,8 +163,10 @@ export function Editor() {
     // 使用 requestAnimationFrame 替代 setTimeout(150ms)：
     // 与浏览器渲染周期同步，减少布局抖动，降低 macOS WKWebView 丢键风险
     cancelAnimationFrame(rafRef.current);
+    const val = textareaRef.current?.value ?? '';
+    // 记录用户当前草稿，避免后续 effect 把它误判为外部变更。
+    syncedSourceRef.current = val;
     rafRef.current = requestAnimationFrame(() => {
-      const val = textareaRef.current?.value ?? '';
       updateHighlight(val);
     });
   }, [setDirty, updateHighlight]);
@@ -164,6 +179,7 @@ export function Editor() {
   const handleCompositionEnd = useCallback(() => {
     composingRef.current = false;
     const val = textareaRef.current?.value ?? '';
+    syncedSourceRef.current = val;
     updateHighlight(val);
   }, [updateHighlight]);
 
@@ -183,10 +199,8 @@ export function Editor() {
     setSaveState('saving');
     try {
       await writeFile(activeTab.filePath, saved);
-      const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-      const toc = extractToc(saved);
-      const html = await highlightCodeBlocks(renderMarkdown(saved), theme);
-      useTabsStore.getState().updateSource(activeTab.id, saved, html, toc);
+      const rendered = renderMarkdownDocument(saved);
+      useTabsStore.getState().updateSource(activeTab.id, saved, rendered);
       markSaved();
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 1500);
@@ -228,7 +242,7 @@ export function Editor() {
         </button>
         <button
           className="editor-exit-btn"
-          onClick={() => useEditStore.getState().toggleEditing()}
+          onClick={() => { void useEditStore.getState().toggleEditing(); }}
           title="退出编辑，回到预览模式 (Ctrl+E)"
         >
           退出编辑

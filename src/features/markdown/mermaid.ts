@@ -59,7 +59,9 @@ export async function renderMermaidInContainer(container: HTMLElement): Promise<
   }
 
   const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
-  mermaid.initialize({ startOnLoad: false, theme });
+  // securityLevel 属于 Mermaid 的 secure 配置，显式固定为 strict：
+  // 标签会经过 DOMPurify，禁用 click/脚本等交互，也避免未来默认值变化。
+  mermaid.initialize({ startOnLoad: false, theme, securityLevel: 'strict' });
 
   for (const node of Array.from(nodes)) {
     // 首次渲染后 textContent 已被 SVG 替换，源码记在 data 属性里供换主题重绘

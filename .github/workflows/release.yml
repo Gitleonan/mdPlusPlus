@@ -76,6 +76,8 @@ jobs:
 
             本版本起内置应用内更新检测。从 **0.4.2** 开始，之后的新版本会在应用内自动提示；
             0.4.1 及更早版本没有该功能，需手动下载安装本版一次。
+
+            > 页面上的 `.sig`、`latest.json`、`.app.tar.gz` 是应用内自动更新所需的签名与元数据，无需手动下载。
           releaseDraft: true
           prerelease: false
           # 生成 latest.json 供自动更新使用（应用会从 releases/latest/download/latest.json 读取）

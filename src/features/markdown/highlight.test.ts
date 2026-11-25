@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { highlightCodeBlocks } from './highlight';
+import { hasCodeBlocks, highlightCodeBlocks, highlightCodeBlocksChunked } from './highlight';
 
 describe('highlightCodeBlocks', () => {
   it('replaces code block with shiki output', async () => {
@@ -47,5 +47,20 @@ describe('highlightCodeBlocks', () => {
 
   it('returns empty string for empty input', async () => {
     expect(await highlightCodeBlocks('', 'light')).toBe('');
+  });
+
+  it('detects code blocks without moving the shared regex lastIndex', () => {
+    const input = '<div class="code-block-wrapper">\n<pre><code class="language-ts">const x = 1;</code></pre>\n</div>';
+    expect(hasCodeBlocks(input)).toBe(true);
+    expect(hasCodeBlocks('<p>plain</p>')).toBe(false);
+  });
+
+  it('chunked highlight lets the caller render before shiki finishes', async () => {
+    const input = '<div class="code-block-wrapper">\n<pre><code class="language-ts">const x = 1;</code></pre>\n</div>';
+    let done = false;
+    await highlightCodeBlocksChunked(input, () => {
+      done = true;
+    });
+    expect(done).toBe(true);
   });
 });

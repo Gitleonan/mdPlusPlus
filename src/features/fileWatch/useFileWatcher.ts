@@ -1,13 +1,12 @@
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { useTabsStore } from '../../stores/tabsStore';
+import { normalizePathKey, useTabsStore } from '../../stores/tabsStore';
 import { useEditStore } from '../../stores/editStore';
 import { useRevisionStore } from '../../stores/revisionStore';
 import { readFile } from '../../ipc/files';
-import { renderMarkdown } from '../markdown/render';
-import { highlightCodeBlocks } from '../markdown/highlight';
-import { extractToc } from '../markdown/toc';
+import { renderMarkdownDocument } from '../markdown/render';
 import { computeLineDiff } from '../../utils/diff';
+import { useToastStore } from '../../stores/toastStore';
 
 /** 监听 Rust 端 file-changed 事件，自动刷新被外部修改的文件 */
 export function useFileWatcher() {
@@ -24,14 +23,10 @@ export function useFileWatcher() {
       const { isRevisionMode, snapshotSource, revisions, addRevision } =
         useRevisionStore.getState();
 
-      // 当前主题（正常模式与修订模式共用）
-      const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-
       if (isRevisionMode) {
         for (const path of changedPaths) {
-          const tab = tabs.find(
-            (t: { filePath: string }) => t.filePath === path || t.filePath === path.replace(/\//g, '\\'),
-          );
+          const key = normalizePathKey(path);
+          const tab = tabs.find((t) => normalizePathKey(t.filePath) === key);
           if (!tab) continue;
           try {
             const newSource = await readFile(tab.filePath);
@@ -49,9 +44,8 @@ export function useFileWatcher() {
 
             // 同步刷新 tab 的源码、HTML 与 TOC：修订预览由 revisionStore 渲染 diff，
             // 但侧边栏目录订阅 tab.toc，必须随最新内容更新；退出修订模式后也能直接显示最新内容
-            const toc = extractToc(newSource);
-            const html = await highlightCodeBlocks(renderMarkdown(newSource), theme);
-            updateSource(tab.id, newSource, html, toc);
+            const rendered = renderMarkdownDocument(newSource);
+            updateSource(tab.id, newSource, rendered);
           } catch (err) {
             console.error('revision reload failed', err);
           }
@@ -61,16 +55,27 @@ export function useFileWatcher() {
 
       // --- 正常模式：直接刷新 ---
       for (const path of changedPaths) {
-        const tab = tabs.find(
-          (t: { filePath: string }) => t.filePath === path || t.filePath === path.replace(/\//g, '\\'),
-        );
+        const key = normalizePathKey(path);
+        const tab = tabs.find((t) => normalizePathKey(t.filePath) === key);
         if (!tab) continue;
+        // 编辑中的草稿不能因为外部保存/自动格式化而被悄悄替换。
+        // 保留草稿在编辑器里，提示用户自行保存或刷新，避免被动丢改动。
+        if (
+          useEditStore.getState().isEditing
+          && useEditStore.getState().isDirty
+          && useTabsStore.getState().activeTabId === tab.id
+        ) {
+          useToastStore.getState().push(
+            `「${tab.fileName}」在磁盘上已变更；当前未保存草稿已保留`,
+            'info',
+          );
+          continue;
+        }
         try {
           const source = await readFile(tab.filePath);
           if (source === tab.source) continue;
-          const toc = extractToc(source);
-          const html = await highlightCodeBlocks(renderMarkdown(source), theme);
-          updateSource(tab.id, source, html, toc);
+          const rendered = renderMarkdownDocument(source);
+          updateSource(tab.id, source, rendered);
         } catch (err) {
           console.error('reload failed', err);
         }

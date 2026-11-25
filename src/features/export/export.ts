@@ -1,14 +1,41 @@
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
-import { writeFile } from '../../ipc/files';
+import {
+  getAppDataDir,
+  IMAGE_PLACEHOLDER,
+  readImagesAsDataUrls,
+  writeFile,
+} from '../../ipc/files';
 import { openFileWithSystem } from '../../ipc/opener';
 import themesCss from '../../styles/themes.css?raw';
 import proseCss from '../../styles/prose.css?raw';
+import katexCss from 'katex/dist/katex.min.css?raw';
+import katexFontAmWoff2 from 'katex/dist/fonts/KaTeX_AMS-Regular.woff2?url';
+import katexFontCalBoldWoff2 from 'katex/dist/fonts/KaTeX_Caligraphic-Bold.woff2?url';
+import katexFontCalWoff2 from 'katex/dist/fonts/KaTeX_Caligraphic-Regular.woff2?url';
+import katexFontFrakturBoldWoff2 from 'katex/dist/fonts/KaTeX_Fraktur-Bold.woff2?url';
+import katexFontFrakturWoff2 from 'katex/dist/fonts/KaTeX_Fraktur-Regular.woff2?url';
+import katexFontMainBoldWoff2 from 'katex/dist/fonts/KaTeX_Main-Bold.woff2?url';
+import katexFontMainBoldItalicWoff2 from 'katex/dist/fonts/KaTeX_Main-BoldItalic.woff2?url';
+import katexFontMainItalicWoff2 from 'katex/dist/fonts/KaTeX_Main-Italic.woff2?url';
+import katexFontMainWoff2 from 'katex/dist/fonts/KaTeX_Main-Regular.woff2?url';
+import katexFontMathBoldItalicWoff2 from 'katex/dist/fonts/KaTeX_Math-BoldItalic.woff2?url';
+import katexFontMathItalicWoff2 from 'katex/dist/fonts/KaTeX_Math-Italic.woff2?url';
+import katexFontSansBoldWoff2 from 'katex/dist/fonts/KaTeX_SansSerif-Bold.woff2?url';
+import katexFontSansItalicWoff2 from 'katex/dist/fonts/KaTeX_SansSerif-Italic.woff2?url';
+import katexFontSansWoff2 from 'katex/dist/fonts/KaTeX_SansSerif-Regular.woff2?url';
+import katexFontScriptWoff2 from 'katex/dist/fonts/KaTeX_Script-Regular.woff2?url';
+import katexFontSize1Woff2 from 'katex/dist/fonts/KaTeX_Size1-Regular.woff2?url';
+import katexFontSize2Woff2 from 'katex/dist/fonts/KaTeX_Size2-Regular.woff2?url';
+import katexFontSize3Woff2 from 'katex/dist/fonts/KaTeX_Size3-Regular.woff2?url';
+import katexFontSize4Woff2 from 'katex/dist/fonts/KaTeX_Size4-Regular.woff2?url';
+import katexFontTypewriterWoff2 from 'katex/dist/fonts/KaTeX_Typewriter-Regular.woff2?url';
 
 export type ExportFormat = 'pdf' | 'html' | 'markdown';
 
 interface ExportDocumentOptions {
   element: HTMLElement;
   source: string;
+  filePath: string;
   fileName: string;
   theme: 'light' | 'dark';
   format: ExportFormat;
@@ -37,6 +64,7 @@ export function buildStandaloneHtml(
   contentHtml: string,
   css: string,
   theme: 'light' | 'dark',
+  exportKatexCss = '',
 ): string {
   return `<!DOCTYPE html>
 <html lang="zh" data-theme="${theme}">
@@ -44,11 +72,8 @@ export function buildStandaloneHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>md++ export</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.17.0/dist/katex.min.css">
   <style>
+    ${exportKatexCss}
     ${BASE_CSS}
     ${css}
     ${getActiveThemeCss()}
@@ -59,6 +84,114 @@ export function buildStandaloneHtml(
 </html>`;
 }
 
+const KATEX_FONT_URLS: Record<string, string> = {
+  'KaTeX_AMS-Regular.woff2': katexFontAmWoff2,
+  'KaTeX_Caligraphic-Bold.woff2': katexFontCalBoldWoff2,
+  'KaTeX_Caligraphic-Regular.woff2': katexFontCalWoff2,
+  'KaTeX_Fraktur-Bold.woff2': katexFontFrakturBoldWoff2,
+  'KaTeX_Fraktur-Regular.woff2': katexFontFrakturWoff2,
+  'KaTeX_Main-Bold.woff2': katexFontMainBoldWoff2,
+  'KaTeX_Main-BoldItalic.woff2': katexFontMainBoldItalicWoff2,
+  'KaTeX_Main-Italic.woff2': katexFontMainItalicWoff2,
+  'KaTeX_Main-Regular.woff2': katexFontMainWoff2,
+  'KaTeX_Math-BoldItalic.woff2': katexFontMathBoldItalicWoff2,
+  'KaTeX_Math-Italic.woff2': katexFontMathItalicWoff2,
+  'KaTeX_SansSerif-Bold.woff2': katexFontSansBoldWoff2,
+  'KaTeX_SansSerif-Italic.woff2': katexFontSansItalicWoff2,
+  'KaTeX_SansSerif-Regular.woff2': katexFontSansWoff2,
+  'KaTeX_Script-Regular.woff2': katexFontScriptWoff2,
+  'KaTeX_Size1-Regular.woff2': katexFontSize1Woff2,
+  'KaTeX_Size2-Regular.woff2': katexFontSize2Woff2,
+  'KaTeX_Size3-Regular.woff2': katexFontSize3Woff2,
+  'KaTeX_Size4-Regular.woff2': katexFontSize4Woff2,
+  'KaTeX_Typewriter-Regular.woff2': katexFontTypewriterWoff2,
+};
+
+const FONT_FACE_RE = /@font-face\s*\{[^}]*\}/g;
+const KATEX_WOFF2_RE = /url\(fonts\/([^)"']+\.woff2)\)/;
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function loadKatexFont(fileName: string): Promise<string> {
+  const url = KATEX_FONT_URLS[fileName];
+  if (!url) throw new Error(`unknown KaTeX font: ${fileName}`);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`failed to load ${fileName}: HTTP ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return `data:font/woff2;base64,${bytesToBase64(bytes)}`;
+}
+
+/**
+ * 把 KaTeX 的 woff2 引用替换为 data URL。
+ *
+ * 只保留 woff2 一项：woff/ttf 是给旧浏览器准备的，留在导出文件里会让
+ * 外部浏览器尝试访问应用内的相对资源。读取失败的字体只移除对应
+ * `@font-face`，其余样式和文档内容仍可正常导出。
+ */
+export async function inlineKatexFontFaces(
+  css: string,
+  loadFont: (fileName: string) => Promise<string> = loadKatexFont,
+): Promise<string> {
+  if (!css) return '';
+  const matches = Array.from(css.matchAll(FONT_FACE_RE));
+  if (matches.length === 0) return css;
+
+  const loaded = new Map<string, Promise<string>>();
+  const loadOnce = (fileName: string): Promise<string> => {
+    const existing = loaded.get(fileName);
+    if (existing) return existing;
+    const promise = loadFont(fileName);
+    loaded.set(fileName, promise);
+    return promise;
+  };
+
+  const blocks = await Promise.all(matches.map(async (match) => {
+    const block = match[0];
+    const font = block.match(KATEX_WOFF2_RE)?.[1];
+    if (!font) return block;
+    try {
+      const dataUrl = await loadOnce(font);
+      return block.replace(
+        /src:[^;}]+/,
+        `src:url("${dataUrl}") format("woff2")`,
+      );
+    } catch (err) {
+      console.error(`[export] failed to inline KaTeX font ${font}`, err);
+      return '';
+    }
+  }));
+
+  let result = '';
+  let lastIndex = 0;
+  matches.forEach((match, index) => {
+    const start = match.index ?? 0;
+    result += css.slice(lastIndex, start);
+    result += blocks[index];
+    lastIndex = start + match[0].length;
+  });
+  return result + css.slice(lastIndex);
+}
+
+let exportKatexCssPromise: Promise<string> | null = null;
+
+/**
+ * 导出的 HTML/PDF 必须可离线打开：KaTeX 字体改用构建产物地址，
+ * 不再向 Google Fonts / jsDelivr 发起请求。
+ */
+async function getExportKatexCss(): Promise<string> {
+  if (!exportKatexCssPromise) {
+    exportKatexCssPromise = inlineKatexFontFaces(katexCss);
+  }
+  return exportKatexCssPromise;
+}
+
 export async function exportDocument(options: ExportDocumentOptions): Promise<string | null> {
   if (options.format === 'pdf') {
     // macOS WKWebView does not reliably support window.print() with @media
@@ -66,7 +199,7 @@ export async function exportDocument(options: ExportDocumentOptions): Promise<st
     // content.  Instead, generate standalone HTML, save it as a temp file, and
     // open it in the user's default browser where "Save as PDF" works natively
     // on every platform.
-    const html = buildStandaloneHtml(options.element.innerHTML, '', options.theme);
+    const html = await buildExportHtml(options);
     // Inject an auto-print script so the browser's print dialog opens on load
     const printHtml = html.replace(
       '</head>',
@@ -87,14 +220,31 @@ export async function exportDocument(options: ExportDocumentOptions): Promise<st
   });
   if (!path) return null;
 
-  const content = buildExportContent(options);
+  const content = options.format === 'markdown'
+    ? options.source
+    : await buildExportHtml(options);
   await writeFile(path, content);
   return path;
 }
 
+export async function exportPdf(
+  el: HTMLElement,
+  theme: 'light' | 'dark',
+  fileName = 'document.md',
+  filePath = '',
+): Promise<string | null> {
+  return exportDocument({
+    element: el,
+    source: el.innerText,
+    filePath,
+    fileName,
+    theme,
+    format: 'pdf',
+  });
+}
+
 /** 生成临时导出文件路径（在 app data dir 下，避免权限问题） */
 async function getTempExportPath(fileName: string): Promise<string> {
-  const { getAppDataDir } = await import('../../ipc/files');
   const dir = await getAppDataDir();
   const base = replaceExtension(fileName, 'html');
   // 替换路径分隔符避免子目录
@@ -104,21 +254,54 @@ async function getTempExportPath(fileName: string): Promise<string> {
   return `${dir}${sep}${safe}`;
 }
 
-export async function exportPdf(el: HTMLElement, theme: 'light' | 'dark', fileName = 'document.md'): Promise<string | null> {
-  return exportDocument({
-    element: el,
-    source: el.innerText,
-    fileName,
-    theme,
-    format: 'pdf',
-  });
-}
+/**
+ * 克隆预览 DOM 生成导出的 HTML，并把本地图片内联成 data URL。
+ *
+ * 不能直接拿预览 DOM 的 innerHTML：图片已由 `mdpp-img` 自定义协议接管，
+ * 该地址只在应用 WebView 内有效；复制到外部浏览器后图片会全部失效。
+ */
+async function buildExportHtml(options: ExportDocumentOptions): Promise<string> {
+  const container = document.createElement('div');
+  container.innerHTML = options.element.innerHTML;
 
+  // `data-image-src` 是图片解析完成后的原始地址；若用户在解析完成前导出，
+  // 未带该属性的本地相对路径也要一并收集。
+  // 选择器不能表达大小写不敏感，网络地址在遍历时再排除，避免把
+  // `HTTPS://…` 这类合法远程图片当作本地文件读取并替换成占位图。
+  const imgs = Array.from(container.querySelectorAll<HTMLImageElement>('img'))
+    .filter((img) => {
+      const src = img.getAttribute('data-image-src') || img.getAttribute('src') || '';
+      return !/^(https?:|data:)/i.test(src);
+    });
+  if (imgs.length > 0) {
+    const srcs = Array.from(
+      new Set(
+        imgs
+          .map((img) => img.getAttribute('data-image-src') || img.getAttribute('src') || '')
+          .filter(Boolean),
+      ),
+    );
+    try {
+      const dataUrls = await readImagesAsDataUrls(options.filePath, srcs);
+      imgs.forEach((img) => {
+        const src = img.getAttribute('data-image-src') || img.getAttribute('src') || '';
+        const dataUrl = dataUrls.get(src);
+        img.setAttribute('src', dataUrl ?? IMAGE_PLACEHOLDER);
+        img.removeAttribute('data-image-src');
+      });
+    } catch (err) {
+      // 导出不应因图片读取失败而整体失败；本地图片换成内嵌占位图，
+      // 不能保留只在本应用 WebView 内有效的 mdpp-img 地址。
+      console.error('[export] failed to inline local images', err);
+      imgs.forEach((img) => {
+        img.setAttribute('src', IMAGE_PLACEHOLDER);
+        img.removeAttribute('data-image-src');
+      });
+    }
+  }
 
-function buildExportContent(options: ExportDocumentOptions): string {
-  if (options.format === 'markdown') return options.source;
-  // format === 'html'
-  return buildStandaloneHtml(options.element.innerHTML, '', options.theme);
+  const katexCss = await getExportKatexCss();
+  return buildStandaloneHtml(container.innerHTML, '', options.theme, katexCss);
 }
 
 function replaceExtension(fileName: string, extension: string): string {

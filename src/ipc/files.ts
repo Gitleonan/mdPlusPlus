@@ -13,30 +13,73 @@ export async function getStartupFiles(): Promise<string[]> {
   return invoke<string[]>('get_startup_files');
 }
 
-/** 解析图片路径，返回 data URL 或网络 URL */
-export async function resolveImage(mdFilePath: string, src: string): Promise<string> {
-  return invoke<string>('resolve_image', { mdFilePath, src });
+interface ResolvedImage {
+  src: string;
+  url: string | null;
 }
 
-/** 在已渲染的 DOM 中遍历所有 <img>，把相对/绝对路径换为 data URL */
-export async function resolveImages(container: HTMLElement, mdFilePath: string): Promise<void> {
-  const imgs = Array.from(container.querySelectorAll<HTMLImageElement>('img'));
-  await Promise.all(
-    imgs.map(async (img) => {
-      const src = img.getAttribute('src') || '';
-      if (/^(https?:|data:)/.test(src)) return;
-      try {
-        const dataUrl = await resolveImage(mdFilePath, src);
-        img.src = dataUrl;
-      } catch {
-        img.src = PLACEHOLDER;
-      }
+/** 读取文档目录内的图片并返回 data URL；失败项不返回。 */
+export async function readImagesAsDataUrls(
+  mdFilePath: string,
+  srcs: string[],
+): Promise<Map<string, string>> {
+  return new Map(
+    await invoke<Array<[string, string]>>('read_images_as_data_urls', {
+      mdFilePath,
+      srcs,
     }),
   );
 }
 
-const PLACEHOLDER =
-  'data:image/svg+xml;base64,PHN2Zz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZWVlIi8+PC9zdmc+';
+/**
+ * 批量解析图片为一组本地协议 URL 或网络 URL。
+ * 一次 IPC 解析全部图片，失败项返回 null，由调用方决定占位。
+ */
+export async function resolveImageUrls(
+  mdFilePath: string,
+  srcs: string[],
+): Promise<Map<string, string | null>> {
+  const resolved = await invoke<ResolvedImage[]>('resolve_image_urls', { mdFilePath, srcs });
+  return new Map(resolved.map((item) => [item.src, item.url]));
+}
+
+/** 在已渲染的 DOM 中遍历所有 <img>，一次批量 IPC 换成本地协议 URL */
+export async function resolveImages(container: HTMLElement, mdFilePath: string): Promise<void> {
+  const imgs = Array.from(container.querySelectorAll<HTMLImageElement>('img'))
+    .filter((img) => {
+      const src = img.getAttribute('src') || '';
+      // 协议名大小写不敏感；`HTTPS://` 也是网络图片，不能送去本地路径解析。
+      return !/^(https?:|data:)/i.test(src);
+    });
+  if (imgs.length === 0) return;
+
+  const srcs = Array.from(new Set(imgs.map((img) => img.getAttribute('src') || '')));
+  // 先记下原始地址：即使 IPC 失败，导出时仍可凭它重新读取图片。
+  imgs.forEach((img) => {
+    const src = img.getAttribute('src') || '';
+    if (src) img.setAttribute('data-image-src', src);
+  });
+  try {
+    const urls = await resolveImageUrls(mdFilePath, srcs);
+    imgs.forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      img.setAttribute('src', urls.get(src) ?? IMAGE_PLACEHOLDER);
+    });
+  } catch {
+    imgs.forEach((img) => {
+      img.setAttribute('src', IMAGE_PLACEHOLDER);
+    });
+  }
+}
+
+export const IMAGE_PLACEHOLDER =
+  'data:image/svg+xml;charset=utf-8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160" viewBox="0 0 320 160">'
+      + '<rect width="320" height="160" rx="8" fill="#eef0f3"/>'
+      + '<text x="160" y="86" fill="#8b9099" font-family="sans-serif" font-size="14" text-anchor="middle">图片未找到</text>'
+      + '</svg>',
+  );
 
 /** 设置要监听的文件路径列表（调用 Rust watch_files 命令） */
 export async function watchFiles(paths: string[]): Promise<void> {

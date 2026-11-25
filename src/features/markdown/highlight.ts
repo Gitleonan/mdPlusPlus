@@ -1,4 +1,4 @@
-import { createHighlighter, createJavaScriptRegexEngine, type Highlighter } from 'shiki';
+import type { Highlighter } from 'shiki';
 
 const themes = { light: 'github-light', dark: 'github-dark' } as const;
 export type ThemeName = keyof typeof themes;
@@ -7,26 +7,28 @@ let highlighterPromise: Promise<Highlighter> | null = null;
 
 async function getHL(): Promise<Highlighter> {
   if (!highlighterPromise) {
-    highlighterPromise = createHighlighter({
-      themes: ['github-light', 'github-dark'],
-	    langs: [
-	      'typescript', 'javascript', 'bash', 'json', 'markdown', 'rust', 'python',
-	      // 常用文档语言，按需添加避免 bundle 膨胀
-	      'sql',           // SQL / MySQL / PostgreSQL
-	      'shellscript',   // shell / sh / bash / zsh
-	      'css',           // CSS
-	      'html',          // HTML
-	      'xml',           // XML
-	      'yaml',          // YAML
-	      'toml',          // TOML
-	      'diff',          // Diff
-	      'dockerfile',    // Dockerfile
-	      'ini',           // INI / properties / conf
-	      'java',          // Java
-	      'go',            // Go
-	    ],
-      engine: createJavaScriptRegexEngine(),
-    });
+    highlighterPromise = import('shiki').then(({ createHighlighter, createJavaScriptRegexEngine }) =>
+      createHighlighter({
+        themes: ['github-light', 'github-dark'],
+        langs: [
+          'typescript', 'javascript', 'bash', 'json', 'markdown', 'rust', 'python',
+          // 常用文档语言，按需添加避免 bundle 膨胀
+          'sql',           // SQL / MySQL / PostgreSQL
+          'shellscript',   // shell / sh / bash / zsh
+          'css',           // CSS
+          'html',          // HTML
+          'xml',           // XML
+          'yaml',          // YAML
+          'toml',          // TOML
+          'diff',          // Diff
+          'dockerfile',    // Dockerfile
+          'ini',           // INI / properties / conf
+          'java',          // Java
+          'go',            // Go
+        ],
+        engine: createJavaScriptRegexEngine(),
+      }),
+    );
   }
   return highlighterPromise;
 }
@@ -102,7 +104,15 @@ function patchLineMarksInWrapper(wrapperHtml: string, marksJson: string): string
 }
 
 /** 从 code-block-wrapper 中提取语言和代码 */
-const WRAPPER_RE = /<div class="code-block-wrapper[^>]*>[\s\S]*?<pre><code(?:\s+class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>\s*<\/div>/g;
+export const CODE_BLOCK_RE = /<div class="code-block-wrapper[^>]*>[\s\S]*?<pre><code(?:\s+class="language-([\w-]+)")?>([\s\S]*?)<\/code><\/pre>\s*<\/div>/g;
+
+/** 判断 HTML 里是否还有待 Shiki 处理的代码块 */
+export function hasCodeBlocks(html: string): boolean {
+  CODE_BLOCK_RE.lastIndex = 0;
+  const found = CODE_BLOCK_RE.test(html);
+  CODE_BLOCK_RE.lastIndex = 0;
+  return found;
+}
 
 /**
  * 双主题高亮：每个 token 同时写入 --shiki-light / --shiki-dark 两个变量，
@@ -113,7 +123,7 @@ export async function highlightCodeBlocks(html: string, _theme?: ThemeName): Pro
 
   const hl = await getHL();
 
-  let result = html.replace(WRAPPER_RE, (fullMatch, lang, encoded) => {
+  let result = html.replace(CODE_BLOCK_RE, (fullMatch, lang, encoded) => {
     if (!lang) return fullMatch;
     if (lang === 'mermaid') return fullMatch;
 
@@ -144,6 +154,70 @@ export async function highlightCodeBlocks(html: string, _theme?: ThemeName): Pro
   // 在 shiki 生成 .line 之后注入行标记样式
   result = applyLineMarks(result);
   return result;
+}
+
+/**
+ * 后台分块高亮：每处理一个代码块就让出事件循环，避免长文档阻塞输入与滚动。
+ * 只在全部完成后执行一次回调，避免正文 DOM 被多次整体替换。
+ */
+export async function highlightCodeBlocksChunked(
+  html: string,
+  onDone: (html: string) => void,
+  isStale: () => boolean = () => false,
+): Promise<void> {
+  if (!html) {
+    onDone('');
+    return;
+  }
+
+  const hl = await getHL();
+  const matches = Array.from(html.matchAll(CODE_BLOCK_RE));
+  if (matches.length === 0) {
+    onDone(html);
+    return;
+  }
+
+  let result = '';
+  let lastIndex = 0;
+  for (const match of matches) {
+    if (isStale()) return;
+    const fullMatch = match[0];
+    const lang = match[1];
+    const encoded = match[2];
+    const start = match.index ?? 0;
+
+    result += html.slice(lastIndex, start);
+    if (!lang || lang === 'mermaid') {
+      result += fullMatch;
+    } else {
+      try {
+        const code = decodeHtmlEntities(encoded);
+        const shikiResult = hl.codeToHtml(code, {
+          lang,
+          themes: { light: themes.light, dark: themes.dark },
+          defaultColor: false,
+        });
+        const noBgResult = shikiResult.replace(/\bbackground-color:\s*[^;"]+;?\s*/g, '');
+        result += fullMatch.replace(
+          /<pre><code(?:\s+class="language-[\w-]+")?>[\s\S]*?<\/code><\/pre>/,
+          noBgResult,
+        );
+      } catch {
+        result += fullMatch;
+      }
+    }
+    lastIndex = start + fullMatch.length;
+
+    // 让出一帧，保证大文档高亮期间滚动/输入仍可响应
+    await new Promise<void>((resolve) => {
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve());
+      else setTimeout(resolve, 0);
+    });
+  }
+
+  if (isStale()) return;
+  result += html.slice(lastIndex);
+  onDone(applyLineMarks(result));
 }
 
 function decodeHtmlEntities(s: string): string {

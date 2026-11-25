@@ -19,6 +19,20 @@ describe('renderMermaidInContainer', () => {
     mermaidMock.render.mockReset();
   });
 
+  it('initializes mermaid with the strict security level', async () => {
+    mermaidMock.render.mockResolvedValue({ svg: '<svg></svg>' });
+
+    const container = document.createElement('main');
+    container.innerHTML = '<div class="mermaid">flowchart TB\nA-->B</div>';
+    document.body.appendChild(container);
+
+    await renderMermaidInContainer(container);
+
+    expect(mermaidMock.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ startOnLoad: false, securityLevel: 'strict' }),
+    );
+  });
+
   it('passes a hidden host element to mermaid.render and cleans it up afterwards', async () => {
     const seenHosts: HTMLElement[] = [];
     mermaidMock.render.mockImplementation((_id: string, _source: string, host?: HTMLElement) => {

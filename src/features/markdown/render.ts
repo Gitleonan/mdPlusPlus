@@ -1,4 +1,6 @@
-import { md, createMarkdownItWithHtml } from './plugins';
+import { md } from './plugins';
+import { collectToc } from './toc';
+import type { TocItem } from '../../types';
 
 const FENCE = /^\s*(```|~~~)/;
 const DETAILS_OPEN = /^\s*<details(?:\s[^>]*)?>\s*$/i;
@@ -99,8 +101,23 @@ export function renderMarkdown(source: string): string {
   return md.render(protectTablePipes(normalizeDetails(source))).split(PIPE).join('|');
 }
 
-/** 用于修订模式：允许 HTML 标记（注释）通过，以注入高亮标记 */
-const mdHtml = createMarkdownItWithHtml();
-export function renderMarkdownWithHtml(source: string): string {
-  return mdHtml.render(protectTablePipes(normalizeDetails(source))).split(PIPE).join('|');
+export interface RenderedMarkdown {
+  html: string;
+  toc: TocItem[];
+}
+
+/**
+ * 一次 parse 同时产出 HTML 与 TOC。
+ *
+ * markdown-it 的 render 与 parse 都会跑完整解析。普通文档里这点开销不大，
+ * 但打开/保存/外部变更三条路径都会调用，合并后能省掉一遍完整解析。
+ */
+export function renderMarkdownDocument(source: string): RenderedMarkdown {
+  const prepared = protectTablePipes(normalizeDetails(source));
+  const env = {};
+  const tokens = md.parse(prepared, env);
+  return {
+    html: md.renderer.render(tokens, md.options, env).split(PIPE).join('|'),
+    toc: collectToc(tokens),
+  };
 }

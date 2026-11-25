@@ -2362,9 +2362,8 @@ dependencies = [
 
 [[package]]
 name = "mdpp"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
- "base64 0.22.1",
  "dirs 5.0.1",
  "log",
  "notify",
@@ -2374,7 +2373,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "tauri-plugin-fs",
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tauri-plugin-process",

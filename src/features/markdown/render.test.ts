@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderMarkdown } from './render';
+import { renderMarkdown, renderMarkdownDocument } from './render';
 
 describe('renderMarkdown', () => {
   // ── 基础 Markdown ──
@@ -8,6 +8,20 @@ describe('renderMarkdown', () => {
     const html = renderMarkdown('# Hello');
     expect(html).toContain('<h1');
     expect(html).toContain('Hello');
+  });
+
+  it('does not enable raw HTML in untrusted markdown', () => {
+    const html = renderMarkdown('<img src=x onerror="alert(1)"><script>alert(2)</script>');
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('<script');
+    expect(html).toContain('&lt;img');
+  });
+
+  it('produces the same HTML and TOC in one parse', () => {
+    const source = '# Title\n\n## Section\n\nBody\n\n### Deep';
+    const document = renderMarkdownDocument(source);
+    expect(document.html).toBe(renderMarkdown(source));
+    expect(document.toc.map((item) => item.text)).toEqual(['Title', 'Section', 'Deep']);
   });
 
   it('renders unordered list', () => {
@@ -19,6 +33,13 @@ describe('renderMarkdown', () => {
   it('renders code block with language class', () => {
     const html = renderMarkdown('```ts\nconst x = 1;\n```');
     expect(html).toContain('language-ts');
+  });
+
+  it('escapes the fence language so it cannot inject attributes', () => {
+    const html = renderMarkdown('```x" onmouseover="alert(1)\ncode\n```');
+    // 语言标识只能留在 class 属性内部，不能闭合属性生成事件处理器。
+    expect(html).not.toContain('onmouseover=');
+    expect(html).toContain('&quot;');
   });
 
   it('renders inline code', () => {
@@ -49,6 +70,48 @@ describe('renderMarkdown', () => {
   it('renders inline math', () => {
     const html = renderMarkdown('$a + b = c$');
     expect(html).toMatch(/katex/i);
+  });
+
+  it('renders ChatGPT-style inline math with \\(...\\)', () => {
+    const html = renderMarkdown('行内公式 \\(a^2 + b^2 = c^2\\) 结束');
+    expect(html).toContain('katex');
+    expect(html).not.toContain('\\(');
+    expect(html).not.toContain('\\)');
+  });
+
+  it('renders ChatGPT-style display math with a multiline \\[...\\] fence', () => {
+    const html = renderMarkdown('\\[\nE = mc^2\n\\]');
+    expect(html).toContain('katex-display');
+    expect(html).not.toContain('\\[');
+    expect(html).not.toContain('\\]');
+  });
+
+  it('renders ChatGPT-style display math on a single line', () => {
+    const html = renderMarkdown('\\[ \\int_0^1 x^2 \\, dx \\]');
+    expect(html).toContain('katex-display');
+    expect(html).not.toContain('\\[');
+    expect(html).not.toContain('\\]');
+  });
+
+  it('keeps dollar math behavior alongside backslash delimiters', () => {
+    const inline = renderMarkdown('$a + b$');
+    const block = renderMarkdown('$$\nE = mc^2\n$$');
+    expect(inline).toContain('katex');
+    expect(block).toContain('katex-display');
+  });
+
+  it('keeps math delimiters literal inside code', () => {
+    const inline = renderMarkdown('`\\(not math\\)`');
+    const block = renderMarkdown('```text\n\\[\nnot math\n\\]\n```');
+    expect(inline).toContain('<code>\\(not math\\)</code>');
+    expect(block).not.toContain('katex');
+    expect(block).toContain('\\[');
+  });
+
+  it('does not consume a currency-style backslash escape', () => {
+    const html = renderMarkdown('价格 \\$5，公式 \\(x + 1\\)');
+    expect(html).toContain('价格 $5');
+    expect(html).toContain('katex');
   });
 
   it('renders table', () => {

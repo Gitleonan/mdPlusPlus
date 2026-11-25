@@ -9,7 +9,7 @@ import appIcon from '../../assets/app-icon.svg';
 import featuresMd from '../../../features.md?raw';
 
 /** 构建时兜底值；运行时以 Tauri 的 getVersion() 为准（见下方的 useEffect） */
-const FALLBACK_VERSION = '0.4.2';
+const FALLBACK_VERSION = '0.5.0';
 const GITHUB_URL = 'https://github.com/Gitleonan/mdPlusPlus';
 
 interface AboutModalProps {

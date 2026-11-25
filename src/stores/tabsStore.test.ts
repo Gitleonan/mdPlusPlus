@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTabsStore } from './tabsStore';
 import { useEphemeralStore } from './ephemeralStore';
 import { useEditStore } from './editStore';
+import { resetDiscardConfirmForTests, useDiscardConfirmStore } from './discardConfirmStore';
 
 // Mock Tauri API
 vi.mock('@tauri-apps/api/core', () => ({
@@ -13,6 +14,7 @@ describe('tabsStore', () => {
   const invokeMock = vi.mocked(invoke);
 
   beforeEach(() => {
+    resetDiscardConfirmForTests();
     useTabsStore.setState({ tabs: [], activeTabId: null });
     useEphemeralStore.setState({ enabled: false });
     useEditStore.setState({ isEditing: false, isDirty: false, lastSaveAt: 0 });
@@ -45,7 +47,7 @@ describe('tabsStore', () => {
   it('closes a tab and clears active if last', async () => {
     await useTabsStore.getState().openTab('C:/a.md');
     const id = useTabsStore.getState().tabs[0].id;
-    useTabsStore.getState().closeTab(id);
+    await useTabsStore.getState().closeTab(id);
     expect(useTabsStore.getState().tabs).toHaveLength(0);
     expect(useTabsStore.getState().activeTabId).toBeNull();
   });
@@ -56,7 +58,7 @@ describe('tabsStore', () => {
     await useTabsStore.getState().openTab('C:/c.md');
     const middleId = useTabsStore.getState().tabs[1].id;
 
-    useTabsStore.getState().closeTabsToLeft(middleId);
+    await useTabsStore.getState().closeTabsToLeft(middleId);
 
     const s = useTabsStore.getState();
     expect(s.tabs.map((t) => t.fileName)).toEqual(['b.md', 'c.md']);
@@ -69,7 +71,7 @@ describe('tabsStore', () => {
     await useTabsStore.getState().openTab('C:/c.md');
     const firstId = useTabsStore.getState().tabs[0].id;
 
-    useTabsStore.getState().closeTabsToRight(firstId);
+    await useTabsStore.getState().closeTabsToRight(firstId);
 
     const s = useTabsStore.getState();
     expect(s.tabs.map((t) => t.fileName)).toEqual(['a.md']);
@@ -81,12 +83,15 @@ describe('tabsStore', () => {
     await useTabsStore.getState().openTab('C:/b.md');
     await useTabsStore.getState().openTab('C:/c.md');
     const middleId = useTabsStore.getState().tabs[1].id;
+    useTabsStore.getState().setScrollTop(middleId, 240);
+    useTabsStore.getState().setScrollTop(useTabsStore.getState().tabs[0].id, 80);
 
-    useTabsStore.getState().closeOtherTabs(middleId);
+    await useTabsStore.getState().closeOtherTabs(middleId);
 
     const s = useTabsStore.getState();
     expect(s.tabs.map((t) => t.fileName)).toEqual(['b.md']);
     expect(s.activeTabId).toBe(middleId);
+    expect(s.getScrollTop(middleId)).toBe(240);
   });
 
   it('moves a tab before the drop target and persists the new order', async () => {
@@ -109,7 +114,7 @@ describe('tabsStore', () => {
     await useTabsStore.getState().openTab('C:/a.md');
     await useTabsStore.getState().openTab('C:/b.md');
     const id = useTabsStore.getState().tabs[0].id;
-    useTabsStore.getState().setActive(id);
+    await useTabsStore.getState().setActive(id);
     expect(useTabsStore.getState().activeTabId).toBe(id);
   });
 
@@ -118,7 +123,7 @@ describe('tabsStore', () => {
     await useTabsStore.getState().openTab('C:/b.md');
     const firstId = useTabsStore.getState().tabs[0].id;
 
-    useTabsStore.getState().setActive(firstId);
+    await useTabsStore.getState().setActive(firstId);
 
     expect(JSON.parse(localStorage.getItem('mdpp.openTabs.v1') || '{}')).toEqual({
       paths: ['C:\\a.md', 'C:\\b.md'],
@@ -147,7 +152,7 @@ describe('tabsStore', () => {
   it('closeAllTabs 清空全部标签', async () => {
     await useTabsStore.getState().openTab('C:/a.md');
     await useTabsStore.getState().openTab('C:/b.md');
-    useTabsStore.getState().closeAllTabs();
+    await useTabsStore.getState().closeAllTabs();
     const s = useTabsStore.getState();
     expect(s.tabs).toHaveLength(0);
     expect(s.activeTabId).toBeNull();
@@ -157,48 +162,129 @@ describe('tabsStore', () => {
     await useTabsStore.getState().openTab('C:/a.md');
     const id = useTabsStore.getState().tabs[0].id;
     useEditStore.setState({ isEditing: true, isDirty: true });
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    useTabsStore.getState().closeTab(id);
+    const close = useTabsStore.getState().closeTab(id);
+    expect(useDiscardConfirmStore.getState().request?.message).toContain('a.md');
+    useDiscardConfirmStore.getState().resolve(false);
+    await close;
     expect(useTabsStore.getState().tabs).toHaveLength(1);
-    confirmSpy.mockReturnValue(true);
-    useTabsStore.getState().closeTab(id);
+
+    const closeConfirmed = useTabsStore.getState().closeTab(id);
+    useDiscardConfirmStore.getState().resolve(true);
+    await closeConfirmed;
     expect(useTabsStore.getState().tabs).toHaveLength(0);
-    confirmSpy.mockRestore();
+  });
+
+  it('批量关闭时不会因前面有非脏 tab 而跳过当前脏 tab 的确认', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    await useTabsStore.getState().openTab('C:/b.md');
+    await useTabsStore.getState().openTab('C:/c.md');
+    const [first, second, third] = useTabsStore.getState().tabs;
+    await useTabsStore.getState().setActive(third.id);
+    useEditStore.setState({ isEditing: true, isDirty: true });
+
+    // a、b 非脏，c 是当前脏 tab：some() 会在 a 处短路并误关 c。
+    const closeOthers = useTabsStore.getState().closeOtherTabs(second.id);
+    expect(useDiscardConfirmStore.getState().request).not.toBeNull();
+    useDiscardConfirmStore.getState().resolve(false);
+    await closeOthers;
+    expect(useTabsStore.getState().tabs).toHaveLength(3);
+    expect(useTabsStore.getState().activeTabId).toBe(third.id);
+
+    const closeAll = useTabsStore.getState().closeAllTabs();
+    expect(useDiscardConfirmStore.getState().request).not.toBeNull();
+    useDiscardConfirmStore.getState().resolve(true);
+    await closeAll;
+    expect(useTabsStore.getState().tabs).toHaveLength(0);
+    expect(first.id).not.toBe(third.id);
   });
 
   it('非编辑模式关 tab 不弹确认', async () => {
     await useTabsStore.getState().openTab('C:/a.md');
     const id = useTabsStore.getState().tabs[0].id;
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    useTabsStore.getState().closeTab(id);
-    expect(confirmSpy).not.toHaveBeenCalled();
+    await useTabsStore.getState().closeTab(id);
+    expect(useDiscardConfirmStore.getState().request).toBeNull();
     expect(useTabsStore.getState().tabs).toHaveLength(0);
-    confirmSpy.mockRestore();
   });
 
-  it('editStore.toggleEditing 脏状态下需确认,取消则停留编辑', () => {
+  it('编辑模式下切换脏 tab 需确认,取消则保持原编辑目标', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    await useTabsStore.getState().openTab('C:/b.md');
+    const [first, second] = useTabsStore.getState().tabs;
+    await useTabsStore.getState().setActive(first.id);
     useEditStore.setState({ isEditing: true, isDirty: true });
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    useEditStore.getState().toggleEditing();
+
+    const switchTab = useTabsStore.getState().setActive(second.id);
+    expect(useDiscardConfirmStore.getState().request?.message).toContain('切换');
+    useDiscardConfirmStore.getState().resolve(false);
+    await switchTab;
+    expect(useTabsStore.getState().activeTabId).toBe(first.id);
+    expect(useEditStore.getState().isDirty).toBe(true);
+
+    const switchConfirmed = useTabsStore.getState().setActive(second.id);
+    useDiscardConfirmStore.getState().resolve(true);
+    await switchConfirmed;
+    expect(useTabsStore.getState().activeTabId).toBe(second.id);
+  });
+
+  it('编辑模式下打开新文件需确认,取消则不创建占位 tab', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    const first = useTabsStore.getState().tabs[0];
+    useEditStore.setState({ isEditing: true, isDirty: true });
+
+    const openSecond = useTabsStore.getState().openTab('C:/b.md');
+    expect(useDiscardConfirmStore.getState().request).not.toBeNull();
+    useDiscardConfirmStore.getState().resolve(false);
+    await openSecond;
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    expect(useTabsStore.getState().activeTabId).toBe(first.id);
+
+    const openConfirmed = useTabsStore.getState().openTab('C:/b.md');
+    useDiscardConfirmStore.getState().resolve(true);
+    await openConfirmed;
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+
+  it('点击当前标签不触发未保存确认', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    const id = useTabsStore.getState().tabs[0].id;
+    useEditStore.setState({ isEditing: true, isDirty: true });
+
+    await useTabsStore.getState().setActive(id);
+    expect(useTabsStore.getState().activeTabId).toBe(id);
+    expect(useDiscardConfirmStore.getState().request).toBeNull();
+  });
+
+  it('editStore.toggleEditing 脏状态下需确认,取消则停留编辑', async () => {
+    useEditStore.setState({ isEditing: true, isDirty: true });
+    const exitEdit = useEditStore.getState().toggleEditing();
+    expect(useDiscardConfirmStore.getState().request).not.toBeNull();
+    useDiscardConfirmStore.getState().resolve(false);
+    await exitEdit;
     expect(useEditStore.getState().isEditing).toBe(true);
-    confirmSpy.mockReturnValue(true);
-    useEditStore.getState().toggleEditing();
+
+    const exitConfirmed = useEditStore.getState().toggleEditing();
+    useDiscardConfirmStore.getState().resolve(true);
+    await exitConfirmed;
     expect(useEditStore.getState().isEditing).toBe(false);
     expect(useEditStore.getState().isDirty).toBe(false);
-    confirmSpy.mockRestore();
   });
 
   it('sets scroll position', async () => {
     await useTabsStore.getState().openTab('C:/a.md');
     const id = useTabsStore.getState().tabs[0].id;
+    const tabBefore = useTabsStore.getState().tabs[0];
     useTabsStore.getState().setScrollTop(id, 150);
-    expect(useTabsStore.getState().tabs[0].scrollTop).toBe(150);
+    expect(useTabsStore.getState().getScrollTop(id)).toBe(150);
+    expect(useTabsStore.getState().tabs[0]).toBe(tabBefore);
   });
 
   it('updates source', async () => {
     await useTabsStore.getState().openTab('C:/a.md');
     const id = useTabsStore.getState().tabs[0].id;
-    useTabsStore.getState().updateSource(id, '# New', '<h1>New</h1>', []);
+    useTabsStore.getState().updateSource(id, '# New', {
+      html: '<h1>New</h1>',
+      toc: [],
+    });
     expect(useTabsStore.getState().tabs[0].source).toBe('# New');
     expect(useTabsStore.getState().tabs[0].html).toBe('<h1>New</h1>');
   });
@@ -221,9 +307,49 @@ describe('tabsStore', () => {
 
     const tab = useTabsStore.getState().tabs[0];
     expect(tab.id).toBe(id);
-    expect(tab.scrollTop).toBe(150);
+    expect(useTabsStore.getState().getScrollTop(id)).toBe(150);
     expect(tab.source).toBe('# Reloaded');
     expect(tab.html).toContain('Reloaded');
+  });
+
+  it('reload failure keeps existing content instead of replacing it with an error page', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    const id = useTabsStore.getState().tabs[0].id;
+    invokeMock.mockRejectedValue(new Error('permission denied'));
+
+    await useTabsStore.getState().reloadTab(id);
+
+    const tab = useTabsStore.getState().tabs[0];
+    expect(tab.source).toBe('# Hello');
+    expect(tab.html).toContain('Hello');
+    expect(tab.html).not.toContain('打开文件失败');
+    expect(tab.isLoading).toBe(false);
+  });
+
+  it('records a load error and blocks editing so an empty buffer cannot overwrite the file', async () => {
+    invokeMock.mockRejectedValue(new Error('permission denied'));
+
+    await useTabsStore.getState().openTab('C:/locked.md');
+
+    const tab = useTabsStore.getState().tabs[0];
+    expect(tab.loadError).toContain('permission denied');
+    await useEditStore.getState().toggleEditing();
+    expect(useEditStore.getState().isEditing).toBe(false);
+  });
+
+  it('编辑模式下刷新脏 tab 需确认,取消则保留草稿', async () => {
+    await useTabsStore.getState().openTab('C:/a.md');
+    const id = useTabsStore.getState().tabs[0].id;
+    useEditStore.setState({ isEditing: true, isDirty: true });
+    invokeMock.mockResolvedValue('# From disk');
+
+    const reload = useTabsStore.getState().reloadTab(id);
+    expect(useDiscardConfirmStore.getState().request?.message).toContain('刷新');
+    useDiscardConfirmStore.getState().resolve(false);
+    await reload;
+
+    expect(useTabsStore.getState().tabs[0].source).toBe('# Hello');
+    expect(useEditStore.getState().isDirty).toBe(true);
   });
 
   it('restores open tabs from the last session', async () => {
@@ -262,8 +388,61 @@ describe('tabsStore', () => {
     await restore;
 
     const s = useTabsStore.getState();
-    expect(s.tabs.map((t) => t.fileName)).toEqual(['a.md', 'new.md', 'b.md']);
+    expect(s.tabs.map((t) => t.fileName)).toEqual(['a.md', 'b.md', 'new.md']);
+    expect(s.tabs.filter((t) => t.fileName === 'new.md')).toHaveLength(1);
     expect(s.tabs.find((t) => t.id === s.activeTabId)?.filePath).toBe('C:\\new.md');
+  });
+
+  it('restoreSession still loads a restored tab when the user switches to it mid-restore', async () => {
+    localStorage.setItem(
+      'mdpp.openTabs.v1',
+      JSON.stringify({ paths: ['C:/a.md', 'C:/b.md'], activePath: 'C:/b.md' }),
+    );
+    invokeMock.mockResolvedValue('# Hello');
+
+    const restore = useTabsStore.getState().restoreSession();
+    // restoreSession 首次让出事件循环后，用户点回旧会话里的 b.md
+    const restoredActive = useTabsStore.getState().activeTabId!;
+    await useTabsStore.getState().setActive(restoredActive);
+    await restore;
+
+    await vi.waitFor(() => {
+      const s = useTabsStore.getState();
+      const tab = s.tabs.find((t) => t.id === s.activeTabId);
+      expect(tab?.filePath).toBe('C:\\b.md');
+      expect(tab?.html).toContain('Hello');
+      expect(tab?.isLazy).toBe(false);
+    });
+  });
+
+  it('restoreSession reads only the active tab immediately', async () => {
+    localStorage.setItem(
+      'mdpp.openTabs.v1',
+      JSON.stringify({ paths: ['C:/a.md', 'C:/b.md'], activePath: 'C:/b.md' }),
+    );
+    const readPaths: string[] = [];
+    invokeMock.mockImplementation(async (command, args) => {
+      if (command === 'read_text_file') {
+        readPaths.push((args as { path: string }).path);
+        return '# Hello';
+      }
+      return undefined;
+    });
+
+    await useTabsStore.getState().restoreSession();
+
+    expect(readPaths).toEqual(['C:\\b.md']);
+    expect(useTabsStore.getState().tabs.find((t) => t.fileName === 'a.md')?.isLazy).toBe(true);
+  });
+
+  it('escapes file read errors before inserting them into preview html', async () => {
+    invokeMock.mockRejectedValue(new Error('<img src=x onerror="alert(1)">'));
+
+    await useTabsStore.getState().openTab('C:/evil.md');
+
+    const tab = useTabsStore.getState().tabs[0];
+    expect(tab.html).toContain('&lt;img');
+    expect(tab.html).not.toContain('<img');
   });
 
   it('restoreSession does not steal focus for a missing file tab', async () => {
@@ -283,9 +462,16 @@ describe('tabsStore', () => {
     await useTabsStore.getState().restoreSession();
 
     const s = useTabsStore.getState();
-    const errorTab = s.tabs.find((t) => t.fileName === 'a.md');
-    expect(errorTab?.html).toContain('打开文件失败');
+    const lazyTab = s.tabs.find((t) => t.fileName === 'a.md');
+    expect(lazyTab?.isLazy).toBe(true);
+    expect(lazyTab?.html).toBe('');
     expect(s.tabs.find((t) => t.id === s.activeTabId)?.filePath).toBe('C:\\b.md');
+
+    await useTabsStore.getState().setActive(lazyTab!.id);
+    await vi.waitFor(() => {
+      const errorTab = useTabsStore.getState().tabs.find((t) => t.fileName === 'a.md');
+      expect(errorTab?.html).toContain('打开文件失败');
+    });
   });
 
   it('restoreSession falls back to the last tab when the saved active path is gone', async () => {

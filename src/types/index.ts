@@ -10,10 +10,15 @@ export interface Tab {
   fileName: string;
   source: string;
   html: string;
+  /** 后台高亮全部完成后置为 true；false 时仍有代码块使用普通 <pre> */
+  highlightComplete: boolean;
   toc: TocItem[];
-  scrollTop: number;
   tocExpanded: Record<string, boolean>;
   isLoading: boolean;
+  /** 会话恢复的占位标签：尚未读取文件，首次激活时才构建 */
+  isLazy?: boolean;
+  /** 读取失败的原因；此时 source 为空，禁止进入编辑以免覆盖磁盘原文件 */
+  loadError?: string;
 }
 
 export interface RecentFile {

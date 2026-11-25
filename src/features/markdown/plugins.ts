@@ -10,6 +10,7 @@ import abbr from 'markdown-it-abbr';
 import container from 'markdown-it-container';
 import { setupGitHubAlerts } from './github-alerts';
 import { setupCodeBlockTitle } from './code-features';
+import { setupMathDelimiters } from './math-delimiters';
 
 const EXTERNAL_PROTO = /^(https?|ftp|mailto|tel):/i;
 const MD_EXT = /\.(md|markdown)(\?|#|$)/i;
@@ -101,11 +102,6 @@ export function createMarkdownIt(): MarkdownIt {
   return buildMarkdownIt(false);
 }
 
-/** 创建支持 HTML 标签的实例（用于修订模式注入高亮标记） */
-export function createMarkdownItWithHtml(): MarkdownIt {
-  return buildMarkdownIt(true);
-}
-
 function buildMarkdownIt(html: boolean): MarkdownIt {
   const md = new MarkdownIt({
     html,
@@ -114,6 +110,7 @@ function buildMarkdownIt(html: boolean): MarkdownIt {
   })
     // ── 基础插件 ──
     .use(katex, { throwOnError: false, errorColor: '#cc0000' })
+    .use(setupMathDelimiters)
     .use(taskLists, { enabled: true, label: true })
     .use(footnote)
     .use(mark)

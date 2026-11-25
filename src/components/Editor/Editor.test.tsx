@@ -1,11 +1,23 @@
-import { fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useEditStore } from '../../stores/editStore';
+import {
+  resetDiscardConfirmForTests,
+  useDiscardConfirmStore,
+} from '../../stores/discardConfirmStore';
+import { readFile } from '../../ipc/files';
 import { Editor } from './Editor';
 
 vi.mock('../../ipc/files', () => ({
+  readFile: vi.fn(),
+  watchFiles: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue('# refreshed'),
 }));
 
 describe('Editor', () => {
@@ -13,6 +25,9 @@ describe('Editor', () => {
 
   beforeEach(() => {
     vi.useRealTimers();
+    vi.mocked(invoke).mockResolvedValue('# refreshed');
+    vi.mocked(readFile).mockResolvedValue('# refreshed');
+    resetDiscardConfirmForTests();
     useEditStore.setState({ isEditing: false, isDirty: false, lastSaveAt: 0 });
     useTabsStore.setState({
       activeTabId: 'tab-1',
@@ -22,8 +37,8 @@ describe('Editor', () => {
         fileName: 'doc.md',
         source: Array.from({ length: 80 }, (_, i) => `line ${i + 1}`).join('\n'),
         html: '<p>doc</p>',
+        highlightComplete: true,
         toc: [],
-        scrollTop: 320,
         tocExpanded: {},
         isLoading: false,
       }],
@@ -39,6 +54,7 @@ describe('Editor', () => {
   });
 
   it('starts at the preview scroll position when entering edit mode', () => {
+    useTabsStore.getState().setScrollTop('tab-1', 320);
     const { container } = render(<Editor />);
     const textarea = container.querySelector<HTMLTextAreaElement>('.editor-textarea');
 
@@ -56,8 +72,8 @@ describe('Editor', () => {
         fileName: 'large.md',
         source,
         html: '<p>large</p>',
+        highlightComplete: true,
         toc: [],
-        scrollTop: 0,
         tocExpanded: {},
         isLoading: false,
       }],
@@ -87,5 +103,63 @@ describe('Editor', () => {
     vi.advanceTimersByTime(200);
 
     expect(innerHTMLWrites).toHaveBeenCalledTimes(writesAfterInitialRender);
+  });
+
+  it('syncs the textarea when an external refresh lands while the draft is not dirty', () => {
+    const { container } = render(<Editor />);
+    const textarea = container.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
+    expect(textarea.value).toContain('line 1');
+
+    act(() => {
+      useTabsStore.getState().updateSource('tab-1', '# refreshed', {
+        html: '<h1>refreshed</h1>',
+        toc: [],
+      });
+    });
+
+    expect(textarea.value).toBe('# refreshed');
+  });
+
+  it('does not overwrite a dirty draft when the store changes underneath it', () => {
+    const { container } = render(<Editor />);
+    const textarea = container.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
+    fireEvent.change(textarea, {
+      target: {
+        value: '# local draft',
+        selectionStart: '# local draft'.length,
+        selectionEnd: '# local draft'.length,
+      },
+    });
+    expect(useEditStore.getState().isDirty).toBe(true);
+
+    act(() => {
+      useTabsStore.getState().updateSource('tab-1', '# external update', {
+        html: '<h1>external</h1>',
+        toc: [],
+      });
+    });
+
+    expect(textarea.value).toBe('# local draft');
+  });
+
+  it('shows the refreshed disk content after the user confirms discarding a draft', async () => {
+    const { container } = render(<Editor />);
+    const textarea = container.querySelector<HTMLTextAreaElement>('.editor-textarea')!;
+    fireEvent.change(textarea, {
+      target: {
+        value: '# local draft',
+        selectionStart: '# local draft'.length,
+        selectionEnd: '# local draft'.length,
+      },
+    });
+    useEditStore.setState({ isEditing: true, isDirty: true });
+
+    const reload = useTabsStore.getState().reloadTab('tab-1');
+    expect(useDiscardConfirmStore.getState().request).not.toBeNull();
+    act(() => useDiscardConfirmStore.getState().resolve(true));
+    await act(async () => { await reload; });
+
+    expect(textarea.value).toBe('# refreshed');
+    expect(useEditStore.getState().isDirty).toBe(false);
   });
 });

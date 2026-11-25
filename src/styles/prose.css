@@ -154,13 +154,13 @@
 }
 
 .md-content :not(pre) > code {
-  padding: 3px 6px;
+  padding: 2px 6px;
   background-color: var(--code-inline-bg);
-  border-radius: 4px;
-  border: none;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
   font-family: var(--font-mono);
-  font-weight: 400;
-  transition: color var(--t-color), background-color var(--t-color);
+  font-weight: 450;
+  transition: color var(--t-color), background-color var(--t-color), border-color var(--t-color);
   /* ponytail: break-word 会把 min-content 压到 1 字符，表格列被挤成逐字竖排；break-word 仅溢出时换行 */
   overflow-wrap: break-word;
 }
@@ -176,12 +176,14 @@
   background: var(--code-bg);
   padding: 20px 24px;
   border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  box-shadow: var(--shadow-sm);
   overflow: auto;
   margin: 0;
   font-size: 0.875em;
   line-height: 1.45;
   font-family: inherit;
-  transition: background-color var(--t-color);
+  transition: background-color var(--t-color), border-color var(--t-color), box-shadow var(--t-color);
 }
 
 /* 双主题高亮：颜色由 data-theme 决定，切换主题无需重新高亮 */
@@ -215,21 +217,21 @@
 
 .md-content blockquote {
   position: relative;
-  padding: 8px 20px 8px 36px;
-  margin: 16px 0;
+  padding: 10px 20px 10px 44px;
+  margin: 18px 0;
   color: var(--fg-muted);
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
-  border: none;
-  transition: background-color var(--t-color), color var(--t-color);
+  background-color: color-mix(in srgb, var(--bg-secondary) 75%, var(--bg));
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  transition: background-color var(--t-color), color var(--t-color), border-color var(--t-color);
 }
 
 .md-content blockquote::before {
   position: absolute;
-  top: 0;
-  left: 4px;
-  width: 24px;
-  height: 24px;
+  top: 11px;
+  left: 14px;
+  width: 20px;
+  height: 20px;
   content: "";
   background-color: var(--fg);
   opacity: 0.3;
@@ -250,35 +252,44 @@
 /* 横向滚动交给外层容器：table 保持真实 table 布局，
    列宽拖拽（table-layout: fixed）才能生效，也不会溢出正文栏。 */
 .md-content .table-block {
-  margin: 20px 0;
+  margin: 22px 0;
 }
 
 .md-content .table-block .table-scroll {
   margin: 0;
   overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  background: var(--surface-raised);
 }
 
 .md-content table {
   width: 100%;
   border-collapse: collapse;
+  border-style: hidden;
   font-size: 14px;
 }
 
 .md-content tr {
-  background-color: var(--bg);
-  border-top: 1px solid var(--border);
+  background-color: var(--surface-raised);
+  border-top: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
   transition: var(--t-color);
   transition-property: background-color, border-top;
 }
 
 .md-content tr:nth-child(2n) {
-  background-color: var(--bg-secondary);
+  background-color: color-mix(in srgb, var(--bg-secondary) 52%, var(--surface-raised));
+}
+
+.md-content tbody tr:hover {
+  background-color: color-mix(in srgb, var(--accent) 4.5%, var(--surface-raised));
 }
 
 .md-content th, .md-content td {
   min-width: 6em;
-  padding: 8px 16px;
-  border: 1px solid var(--border);
+  padding: 10px 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   text-align: left;
   overflow-wrap: break-word;
   transition: border var(--t-color);
@@ -291,10 +302,12 @@
 
 .md-content th {
   position: relative;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--fg-muted);
-  background-color: var(--bg-secondary);
+  background-color: color-mix(in srgb, var(--bg-secondary) 82%, var(--surface-raised));
+  border-bottom: 1px solid var(--border);
   transition: var(--t-color);
   transition-property: color, background-color, border;
 }
@@ -915,6 +928,8 @@ body.is-col-resizing {
 
 .md-content .code-block-wrapper.has-title pre {
   border-radius: 0;
+  border: none;
+  box-shadow: none;
 }
 
 /* ── Code Block Title (plume: bottom accent bar) ────────────── */
@@ -1201,13 +1216,11 @@ body.is-col-resizing {
 
 .md-content blockquote blockquote {
   background: color-mix(in srgb, var(--fg) 5%, var(--bg-secondary));
-  border-left: 3px solid var(--border);
-  border-radius: 0 8px 8px 0;
+  border-radius: 8px;
 }
 
 .md-content blockquote blockquote blockquote {
   background: color-mix(in srgb, var(--fg) 8%, var(--bg-secondary));
-  border-left: 3px solid color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 
 /* ── KaTeX 防止顶部文字被截 ──────────────────────────────────── */

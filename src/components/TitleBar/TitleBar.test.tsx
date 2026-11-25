@@ -22,8 +22,8 @@ beforeEach(() => {
       fileName: 'note.md',
       source: '# Note',
       html: '<h1>Note</h1>',
+      highlightComplete: true,
       toc: [],
-      scrollTop: 0,
       tocExpanded: {},
       isLoading: false,
     }],
@@ -42,7 +42,7 @@ describe('TitleBar tab context menu', () => {
     );
 
     fireEvent.contextMenu(screen.getByText('note.md'));
-    fireEvent.click(screen.getByRole('menuitem', { name: '打开所在位置' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: '打开所在位置' }));
 
     await waitFor(() => {
       expect(openContainingFolder).toHaveBeenCalledWith('C:\\docs\\note.md');

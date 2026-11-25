@@ -147,7 +147,7 @@ pnpm tauri build
 ```
 
 Outputs are in `src-tauri/target/release/bundle/`:
-- **Windows** — `.msi` installer
+- **Windows** — `.exe` (NSIS) installer
 - **macOS** — `.dmg` disk image
 
 ---

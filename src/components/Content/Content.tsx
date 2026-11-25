@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { AlignCenter, ChevronUp, Maximize2 } from 'lucide-react';
+import { AlignCenter, ChevronUp, Maximize2, X } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useZenStore } from '../../stores/zenStore';
 import { useLayoutStore } from '../../stores/layoutStore';
@@ -13,7 +12,7 @@ import { classifyLink, resolveLocalPath } from '../../features/markdown/links';
 import { useLightbox } from '../../hooks/useLightbox';
 import { smoothScrollTo } from '../../utils/smoothScroll';
 import { segmentHunks, groupChangeSegments } from '../../utils/diff';
-import { renderMarkdownWithHtml } from '../../features/markdown/render';
+import { renderMarkdown } from '../../features/markdown/render';
 import { highlightCodeBlocks } from '../../features/markdown/highlight';
 import { extractToc } from '../../features/markdown/toc';
 import { enhanceTables } from '../../features/markdown/table-resize';
@@ -38,6 +37,18 @@ export function countMarkdownWords(source: string): number {
     .replace(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g, ' ')
     .match(/[A-Za-z0-9]+(?:[+'-][A-Za-z0-9]+)*/g)?.length ?? 0;
   return cjkChars + latinWords;
+}
+
+const wordCountCache = new Map<string, number>();
+
+/** 字数统计会逐字扫全文；同一份源码在滚动/重绘期间不应反复计算。 */
+export function getMarkdownWordCount(source: string): number {
+  const cached = wordCountCache.get(source);
+  if (cached !== undefined) return cached;
+  const count = countMarkdownWords(source);
+  if (wordCountCache.size >= 8) wordCountCache.clear();
+  wordCountCache.set(source, count);
+  return count;
 }
 
 export function getActiveHeadingId(container: HTMLElement, topOffset = 96): string | null {
@@ -76,6 +87,55 @@ function handlePreviewSelectAll(e: React.KeyboardEvent<HTMLElement>): void {
 
   e.preventDefault();
   selectElementContents(e.currentTarget);
+}
+
+/** 给已注入的预览 DOM 挂上图片灯箱和链接拦截，返回清理函数。 */
+function attachPreviewInteractions(container: HTMLElement, filePath: string): () => void {
+  const open = useLightbox.getState().open;
+  const imgCleanups: Array<() => void> = [];
+  container.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+    if (img.closest('a')) return;
+    const onClick = () => open(img.src);
+    img.addEventListener('click', onClick);
+    imgCleanups.push(() => img.removeEventListener('click', onClick));
+  });
+
+  const onLinkClick = (e: MouseEvent) => {
+    const target = e.target instanceof Element
+      ? e.target
+      : e.target instanceof Node
+        ? e.target.parentElement
+        : null;
+    const a = target?.closest('a');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href) return;
+    const link = classifyLink(href);
+    if (link.kind === 'anchor') return;
+    e.preventDefault();
+    if (link.kind === 'external') {
+      openExternalUrl(link.url).catch((err) => console.error('[link] openUrl failed', err));
+      return;
+    }
+    if (link.kind === 'mdFile') {
+      const resolved = resolveLocalPath(filePath, link.path);
+      useTabsStore
+        .getState()
+        .openTab(resolved)
+        .catch((err) => console.error('[link] openTab failed', err));
+      return;
+    }
+    if (link.kind === 'localFile') {
+      const resolved = resolveLocalPath(filePath, link.path);
+      openLocalPath(resolved).catch((err) => console.error('[link] openPath failed', err));
+    }
+  };
+  container.addEventListener('click', onLinkClick);
+
+  return () => {
+    container.removeEventListener('click', onLinkClick);
+    imgCleanups.forEach((fn) => fn());
+  };
 }
 
 /** 为代码块添加复制按钮、语言标签和行号 */
@@ -206,19 +266,16 @@ function RevisionPreview({
   oldSource,
   filePath,
   hunks,
-  onContentReady,
 }: {
   newSource: string;
   oldSource: string;
   filePath: string;
   hunks: RevisionHunk[];
-  onContentReady?: (el: HTMLElement) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [html, setHtml] = useState<string | null>(null);
   const currentSegmentIndex = useRevisionStore((s) => s.currentSegmentIndex);
   const currentRevisionId = useRevisionStore((s) => s.currentRevisionId);
-
   useEffect(() => {
     let cancelled = false;
     const theme =
@@ -231,7 +288,7 @@ function RevisionPreview({
         const parts: string[] = [];
         segments.forEach((seg, segIdx) => {
           if (seg.kind === 'unchanged') {
-            parts.push(renderMarkdownWithHtml(seg.source));
+            parts.push(renderMarkdown(seg.source));
             return;
           }
           // 该段属于第几个变更点
@@ -240,12 +297,17 @@ function RevisionPreview({
           const idAttr = blockId ? ` id="${blockId}" data-rev-seg="${groupIdx}"` : '';
           const cls = seg.kind === 'added' ? 'rev-add' : 'rev-del';
           parts.push(
-            `<div class="rev-block ${cls}"${idAttr}>${renderMarkdownWithHtml(seg.source)}</div>`,
+            `<div class="rev-block ${cls}"${idAttr}>${renderMarkdown(seg.source)}</div>`,
           );
         });
         const rendered = parts.join('\n');
-        const highlighted = await highlightCodeBlocks(rendered, theme);
-        if (!cancelled) setHtml(highlighted);
+        // 先展示安全渲染结果；Shiki 只负责代码块着色，不阻塞正文。
+        if (!cancelled) setHtml(rendered);
+        void highlightCodeBlocks(rendered, theme)
+          .then((highlighted) => {
+            if (!cancelled) setHtml(highlighted);
+          })
+          .catch(console.error);
       } catch (err) {
         console.error('[RevisionPreview] render failed', err);
         if (!cancelled) setHtml(`<p>渲染失败</p>`);
@@ -256,7 +318,7 @@ function RevisionPreview({
     };
   }, [newSource, oldSource, hunks]);
 
-  // DOM 注入后处理并滚动到第一个变更块
+  // DOM 注入与增强只在文档内容变化时执行
   useEffect(() => {
     if (!html || !containerRef.current) return;
     const el = containerRef.current;
@@ -281,19 +343,20 @@ function RevisionPreview({
       renderMermaidInContainer(el),
     ]).catch(console.error);
 
-    onContentReady?.(el);
+    // 导航只改变 currentSegmentIndex，不应因父组件的新回调而重建正文。
+    return attachPreviewInteractions(el, filePath);
+  }, [html, filePath, newSource, hunks]);
 
-    // 自动滚动到当前变更块
-    const target = currentSegmentIndex >= 0
-      ? (el.querySelector(`#rev-seg-${currentSegmentIndex}`) as HTMLElement | null)
-      : null;
-    const firstChange = target ?? (el.querySelector('.rev-block') as HTMLElement | null);
-    if (firstChange) {
-      requestAnimationFrame(() => {
-        firstChange.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
-    }
-  }, [html, filePath, newSource, hunks, onContentReady, currentSegmentIndex, currentRevisionId]);
+  // 导航只滚动，不重建 DOM / 图片 / Mermaid
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !currentRevisionId) return;
+    const target = el.querySelector(`#rev-seg-${currentSegmentIndex}`);
+    if (!target) return;
+    requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [currentSegmentIndex, currentRevisionId, html]);
 
   if (!html) {
     return (
@@ -333,136 +396,70 @@ function MonitoringIndicator() {
   const removedCount = currentRevision?.hunks.filter((h) => h.type === 'removed').length ?? 0;
   const hasChanges = segTotal > 0;
 
-  const btn = (delay: number) => ({ duration: 0.4, ease: [0.32, 0.72, 0, 1] as [number, number, number, number], delay });
-
   return (
-    <motion.div
-      className="monitoring-indicator"
-      initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-      exit={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
-      transition={{ duration: 0.55, ease: [0.32, 0.72, 0, 1] }}
-    >
-      {/* 光点状态胶囊 */}
+    <div className="monitoring-indicator">
+      {/* 状态光点 */}
       <span className="monitoring-pill">
-        <span className="monitoring-dot-wrap">
-          {/* 外圈扩散涟漪 */}
-          <motion.span
-            className="monitoring-dot-ripple"
-            animate={{ scale: [1, 2.2], opacity: [0.5, 0] }}
-            transition={{ duration: 2.6, ease: [0.32, 0.72, 0, 1], repeat: Infinity }}
-          />
-          {/* 内核呼吸光点 */}
-          <motion.span
-            className="monitoring-dot"
-            animate={{ scale: [1, 1.45, 1], opacity: [0.55, 1, 0.55] }}
-            transition={{ duration: 2.6, ease: [0.32, 0.72, 0, 1], repeat: Infinity }}
-          />
-        </span>
+        <span className="monitoring-dot" />
       </span>
 
       {/* 变更统计 */}
-      <AnimatePresence>
-        {hasChanges && (
-          <motion.span
-            className="monitoring-stats"
-            initial={{ opacity: 0, x: -8, filter: 'blur(2px)' }}
-            animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, x: -8, filter: 'blur(2px)' }}
-            transition={{ duration: 0.35, ease: [0.32, 0.72, 0, 1] }}
-          >
-            {addedCount > 0 && <span className="rev-summary-added">+{addedCount}</span>}
-            <span className="monitoring-stats-sep" />
-            {removedCount > 0 && <span className="rev-summary-removed">-{removedCount}</span>}
-          </motion.span>
-        )}
-      </AnimatePresence>
+      {hasChanges && (
+        <span className="monitoring-stats">
+          {addedCount > 0 && <span className="rev-summary-added">+{addedCount}</span>}
+          <span className="monitoring-stats-sep" />
+          {removedCount > 0 && <span className="rev-summary-removed">-{removedCount}</span>}
+        </span>
+      )}
 
-      {/* 分隔线 */}
-      <AnimatePresence>
-        {hasChanges && (
-          <motion.span
-            className="monitoring-divider"
-            initial={{ opacity: 0, scaleY: 0 }}
-            animate={{ opacity: 1, scaleY: 1 }}
-            exit={{ opacity: 0, scaleY: 0 }}
-            transition={btn(0.05)}
-          />
-        )}
-      </AnimatePresence>
+      {hasChanges && <span className="monitoring-divider" />}
 
       {/* 上一个 */}
-      <motion.button
+      <button
         type="button"
         className="monitoring-btn"
         disabled={atFirst}
         onClick={navigatePrev}
         title="上一个变更"
-        initial={{ opacity: 0, x: -6 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -6 }}
-        transition={btn(0.1)}
-        whileHover={!atFirst ? { scale: 1.05 } : undefined}
-        whileTap={!atFirst ? { scale: 0.94 } : undefined}
       >
         ← 上一个
-      </motion.button>
+      </button>
 
       {/* 计数：当前变更点 / 该 revision 变更点总数 */}
-      <AnimatePresence>
-        {hasChanges && (
-          <motion.span
-            className="monitoring-count"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={btn(0.15)}
-          >
-            {currentSegmentIndex + 1}/{segTotal}
-          </motion.span>
-        )}
-      </AnimatePresence>
+      {hasChanges && (
+        <span className="monitoring-count">
+          {currentSegmentIndex + 1}/{segTotal}
+        </span>
+      )}
 
       {/* 下一个 */}
-      <motion.button
+      <button
         type="button"
         className="monitoring-btn"
         disabled={atLast}
         onClick={navigateNext}
         title="下一个变更"
-        initial={{ opacity: 0, x: 6 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 6 }}
-        transition={btn(0.2)}
-        whileHover={!atLast ? { scale: 1.05 } : undefined}
-        whileTap={!atLast ? { scale: 0.94 } : undefined}
       >
         下一个 →
-      </motion.button>
+      </button>
 
       {/* 停止监听 */}
-      <motion.button
+      <button
         type="button"
         className="monitoring-btn monitoring-btn-danger"
         onClick={disableRevisionMode}
         title="停止监听"
-        initial={{ opacity: 0, x: 6 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 6 }}
-        transition={btn(0.25)}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.94 }}
+        aria-label="停止监听"
       >
-        ✕
-      </motion.button>
-    </motion.div>
+        <X size={13} strokeWidth={2} />
+      </button>
+    </div>
   );
 }
 
 export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
-  // 仅订阅会改变渲染结果的字段，避免滚动时 setScrollTop 触发本组件重渲染——
-  // 否则下面的 useEffect 会因为 tab 引用变化重新跑，把 el.innerHTML 重置一次，
-  // 顺手抹掉 SearchBar 刚加上的 <mark>，导致一次性输入多个字时高亮"看似没出现"。
+  // 只订阅会改变渲染结果的字段。滚动位置存放在 tab 外的 map，
+  // setScrollTop 不再替换 tab，因此不会触发这里重跑 innerHTML。
   const tabId = useTabsStore((s) => s.activeTabId);
   const tabHtml = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.html);
   const tabSource = useTabsStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.source);
@@ -479,8 +476,25 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
 	);
 
   const internalRef = useRef<HTMLDivElement>(null);
+  const progressFillRef = useRef<HTMLDivElement>(null);
   const ref = contentRef || internalRef;
+  const previousTabIdRef = useRef<string | null>(null);
+  const previousHtmlRef = useRef<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
+
+  const syncReadingProgress = useCallback((el: HTMLElement) => {
+    const fill = progressFillRef.current;
+    if (!fill) return;
+    const maxScroll = el.scrollHeight - el.clientHeight;
+    if (maxScroll <= 16) {
+      fill.style.opacity = '0';
+      fill.style.transform = 'scaleX(0)';
+      return;
+    }
+    const ratio = Math.min(1, Math.max(0, el.scrollTop / maxScroll));
+    fill.style.opacity = ratio > 0.005 ? '1' : '0';
+    fill.style.transform = `scaleX(${ratio.toFixed(4)})`;
+  }, []);
 
   const handleBackToTop = useCallback(() => {
     if (ref.current) smoothScrollTo(ref.current, 0);
@@ -496,13 +510,21 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
 
 	    // 恢复滚动位置时，短暂屏蔽 scroll 事件，防止 setScrollTop 覆盖刚恢复的值
 	    // 延迟到 rAF 确保浏览器完成布局后再设置 scrollTop
-	    let restoring = true;
-	    requestAnimationFrame(() => {
-	      el.scrollTop = tab.scrollTop;
-	      setShowBackToTop(el.scrollTop > 300);
-	      // 再延迟一帧清除 restoring，避免 scroll 事件覆盖
-	      requestAnimationFrame(() => { restoring = false; });
-	    });
+    const previousTabId = previousTabIdRef.current;
+    const sameTab = previousTabId === tabId;
+    previousTabIdRef.current = tabId;
+    const restoreScroll = !sameTab || previousHtmlRef.current !== tabHtml;
+    previousHtmlRef.current = tabHtml;
+    let restoring = restoreScroll;
+    if (restoreScroll) {
+      requestAnimationFrame(() => {
+        el.scrollTop = useTabsStore.getState().getScrollTop(tab.id);
+        setShowBackToTop(el.scrollTop > 300);
+        syncReadingProgress(el);
+        // 再延迟一帧清除 restoring，避免 scroll 事件覆盖
+        requestAnimationFrame(() => { restoring = false; });
+      });
+    }
 
     // 注入锚点 ID
     injectAnchors(el, tab.toc);
@@ -528,57 +550,8 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
         if (cancelled) return;
       });
 
-    // 图片点击 Lightbox（跳过被链接包裹的图片，如 badge）
-    const open = useLightbox.getState().open;
-    const imgs = el.querySelectorAll<HTMLImageElement>('img');
-    const imgHandlers: Array<() => void> = [];
-    imgs.forEach((img) => {
-      const h = () => {
-        // 图片被链接包裹时不触发灯箱，交给链接处理器
-        if (img.closest('a')) return;
-        open(img.src);
-      };
-      img.addEventListener('click', h);
-      imgHandlers.push(() => img.removeEventListener('click', h));
-    });
-
-    // 链接点击拦截：md 链接打开新 tab、外链丢给系统浏览器、其它本地路径走 opener
-    const onLinkClick = (e: MouseEvent) => {
-      const target = e.target instanceof Element
-        ? e.target
-        : e.target instanceof Node
-          ? e.target.parentElement
-          : null;
-      const a = target?.closest('a');
-      if (!a) return;
-      const href = a.getAttribute('href');
-      if (!href) return;
-      const link = classifyLink(href);
-      if (link.kind === 'anchor') {
-        // 走 webview 默认行为，配合 .md-content 的 scroll-behavior 平滑滚动
-        return;
-      }
-      e.preventDefault();
-      if (link.kind === 'external') {
-        openExternalUrl(link.url).catch((err) => console.error('[link] openUrl failed', err));
-        return;
-      }
-      if (link.kind === 'mdFile') {
-        const resolved = resolveLocalPath(tab.filePath, link.path);
-        console.log('[link] opening md file:', { href, resolved, basePath: tab.filePath });
-        useTabsStore
-          .getState()
-          .openTab(resolved)
-          .catch((err) => console.error('[link] openTab failed', err));
-        return;
-      }
-      if (link.kind === 'localFile') {
-        const resolved = resolveLocalPath(tab.filePath, link.path);
-        openLocalPath(resolved).catch((err) => console.error('[link] openPath failed', err));
-        return;
-      }
-    };
-    el.addEventListener('click', onLinkClick);
+    // 图片点击 Lightbox（跳过被链接包裹的图片，如 badge）+ md/本地链接拦截
+    const detachInteractions = attachPreviewInteractions(el, tab.filePath);
 
     const syncActiveHeading = () => {
       onActiveHeadingChange?.(getActiveHeadingId(el));
@@ -590,16 +563,17 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
         setScrollTop(tab.id, el.scrollTop);
       }
       syncActiveHeading();
+      syncReadingProgress(el);
       setShowBackToTop(el.scrollTop > 300);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     syncActiveHeading();
+    syncReadingProgress(el);
 
     return () => {
       cancelled = true;
       el.removeEventListener('scroll', onScroll);
-      el.removeEventListener('click', onLinkClick);
-      imgHandlers.forEach((fn) => fn());
+      detachInteractions();
     };
 		}, [
 		    tabId,
@@ -608,6 +582,7 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
 		    setScrollTop,
 		    ref,
 		    onActiveHeadingChange,
+		    syncReadingProgress,
 		    isRevisionMode, // 修复 Bug 3: 从修订模式切回预览时需重新填充 innerHTML
 		    currentRevision?.id, // 修复 Bug 2: 拒绝修订后 currentRevision 变为 null 时重新填充
 		  ]);
@@ -625,45 +600,8 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
           oldSource={currentRevision.oldSource}
           filePath={tab?.filePath ?? ''}
           hunks={currentRevision.hunks}
-          onContentReady={(el) => {
-            // 图片点击 Lightbox
-            const open = useLightbox.getState().open;
-            el.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
-              if (img.closest('a')) return;
-              img.addEventListener('click', () => open(img.src));
-            });
-            // 链接点击拦截
-            const onLinkClick = (e: MouseEvent) => {
-              const target =
-                e.target instanceof Element
-                  ? e.target
-                  : e.target instanceof Node
-                    ? e.target.parentElement
-                    : null;
-              const a = target?.closest('a');
-              if (!a) return;
-              const href = a.getAttribute('href');
-              if (!href) return;
-              const link = classifyLink(href);
-              if (link.kind === 'anchor') return;
-              e.preventDefault();
-              if (link.kind === 'external') {
-                openExternalUrl(link.url).catch(console.error);
-                return;
-              }
-              if (link.kind === 'mdFile' || link.kind === 'localFile') {
-                const resolved = resolveLocalPath(tab?.filePath ?? '', link.path);
-                if (link.kind === 'mdFile') {
-                  useTabsStore.getState().openTab(resolved).catch(console.error);
-                } else {
-                  openLocalPath(resolved).catch(console.error);
-                }
-              }
-            };
-            el.addEventListener('click', onLinkClick);
-          }}
         />
-        <div className="word-count-badge">字数 {countMarkdownWords(currentRevision.newSource)}</div>
+        <div className="word-count-badge">字数 {getMarkdownWordCount(currentRevision.newSource)}</div>
         {isZen && <ZenHint />}
       </div>
     );
@@ -680,6 +618,9 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
         </div>
       ) : (
         <>
+          <div className="reading-progress-track" aria-hidden="true">
+            <div className="reading-progress-fill" ref={progressFillRef} />
+          </div>
           <main
             className="md-content"
             ref={ref}
@@ -687,20 +628,18 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
             onMouseDown={() => ref.current?.focus({ preventScroll: true })}
             onKeyDown={handlePreviewSelectAll}
           />
-          <div className="word-count-badge">字数 {countMarkdownWords(tabSource ?? '')}</div>
+          <div className="word-count-badge">字数 {getMarkdownWordCount(tabSource ?? '')}</div>
           {isZen && <ZenHint />}
-          <motion.button
-            className="back-to-top"
-            initial={false}
-            animate={showBackToTop ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            style={{ pointerEvents: showBackToTop ? 'auto' : 'none' }}
-            onClick={handleBackToTop}
-            title="回到顶部"
-            aria-label="回到顶部"
-          >
-            <ChevronUp size={16} strokeWidth={1.5} />
-          </motion.button>
+          {showBackToTop && (
+            <button
+              className="back-to-top"
+              onClick={handleBackToTop}
+              title="回到顶部"
+              aria-label="回到顶部"
+            >
+              <ChevronUp size={16} strokeWidth={1.6} />
+            </button>
+          )}
           <button
             className="content-width-toggle"
             onClick={toggleContentWidth}
@@ -708,8 +647,8 @@ export function Content({ contentRef, onActiveHeadingChange }: ContentProps) {
             aria-label={contentWidth === 'full' ? '内容居中显示' : '内容铺满显示'}
           >
             {contentWidth === 'full'
-              ? <AlignCenter size={16} strokeWidth={1.5} />
-              : <Maximize2 size={16} strokeWidth={1.5} />}
+              ? <AlignCenter size={15} strokeWidth={1.6} />
+              : <Maximize2 size={15} strokeWidth={1.6} />}
           </button>
         </>
       )}

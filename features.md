@@ -181,6 +181,8 @@ def process(data):
 
 勾股定理：$a^2 + b^2 = c^2$
 
+ChatGPT / DeepSeek 网页版导出的写法：\(a^2 + b^2 = c^2\)
+
 ### 块级公式
 
 $$
@@ -194,6 +196,12 @@ $$
 7 & 8 & 9
 \end{bmatrix}
 $$
+
+ChatGPT / DeepSeek 网页版导出的块级写法：
+
+\[
+\int_{-\infty}^{\infty} e^{-x^2} dx = \sqrt{\pi}
+\]
 
 ---
 

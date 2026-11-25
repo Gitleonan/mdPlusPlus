@@ -31,7 +31,7 @@ export function useGlobalShortcuts(options: GlobalShortcutsOptions = {}) {
         options.onExportPdf?.();
       } else if (mod && e.key.toLowerCase() === 'e') {
         e.preventDefault();
-        useEditStore.getState().toggleEditing();
+        void useEditStore.getState().toggleEditing();
       }
     };
     window.addEventListener('keydown', onKey);

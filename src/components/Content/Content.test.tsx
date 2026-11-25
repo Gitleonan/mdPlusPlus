@@ -1,6 +1,7 @@
 import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { useTabsStore } from '../../stores/tabsStore';
+import { useRevisionStore } from '../../stores/revisionStore';
 import { countMarkdownWords, getActiveHeadingId, Content } from './Content';
 
 vi.mock('../../ipc/files', () => ({
@@ -18,6 +19,13 @@ vi.mock('../../ipc/opener', () => ({
 
 beforeEach(() => {
   useTabsStore.setState({ tabs: [], activeTabId: null });
+  useRevisionStore.setState({
+    isRevisionMode: false,
+    revisions: [],
+    currentRevisionId: null,
+    currentSegmentIndex: 0,
+    snapshotSource: '',
+  });
 });
 
 describe('countMarkdownWords', () => {
@@ -50,6 +58,77 @@ describe('getActiveHeadingId', () => {
 });
 
 describe('Content', () => {
+  it('navigating revisions scrolls into view and never rewrites preview html', async () => {
+    const source = '# Title\n\nfirst\n\nsecond';
+    useRevisionStore.setState({
+      isRevisionMode: true,
+      snapshotSource: '# Title\n\nfirst',
+      revisions: [{
+        id: 'rev-1',
+        timestamp: 1,
+        oldSource: '# Title\n\nfirst',
+        newSource: source,
+        hunks: [
+          { type: 'unchanged', content: '# Title' },
+          { type: 'unchanged', content: '' },
+          { type: 'unchanged', content: 'first' },
+          { type: 'added', content: '' },
+          { type: 'added', content: 'second' },
+        ],
+      }],
+      currentRevisionId: 'rev-1',
+      currentSegmentIndex: 0,
+    });
+    useTabsStore.setState({
+      activeTabId: 'tab-1',
+      tabs: [{
+        id: 'tab-1',
+        filePath: 'C:\\docs\\current.md',
+        fileName: 'current.md',
+        source,
+        html: '<p>rendered</p>',
+        highlightComplete: true,
+        toc: [],
+        tocExpanded: {},
+        isLoading: false,
+      }],
+    });
+
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+    let writes = 0;
+    Object.defineProperty(Element.prototype, 'innerHTML', {
+      configurable: true,
+      get() {
+        return descriptor?.get?.call(this);
+      },
+      set(value) {
+        if ((this as HTMLElement).classList?.contains('rev-preview')) writes += 1;
+        descriptor?.set?.call(this, value);
+      },
+    });
+    const scrollSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollSpy;
+
+    try {
+      const { container } = render(<Content />);
+      await waitFor(() => {
+        expect(container.querySelector('.rev-preview')).not.toBeNull();
+      });
+      const writesAfterRender = writes;
+      expect(writesAfterRender).toBeGreaterThan(0);
+
+      act(() => {
+        useRevisionStore.getState().navigateNext();
+      });
+      await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+
+      expect(writes).toBe(writesAfterRender);
+    } finally {
+      if (descriptor) Object.defineProperty(Element.prototype, 'innerHTML', descriptor);
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
   it('injects the current html after loading finishes even when the html string did not change', async () => {
     useTabsStore.setState({
       activeTabId: 'tab-1',
@@ -59,8 +138,8 @@ describe('Content', () => {
         fileName: 'doc.md',
         source: '# Title',
         html: '<h1>Title</h1>',
+        highlightComplete: true,
         toc: [],
-        scrollTop: 0,
         tocExpanded: {},
         isLoading: true,
       }],
@@ -90,8 +169,8 @@ describe('Content', () => {
         fileName: 'current.md',
         source: '[Next](./next.md)',
         html: '<p><a href="./next.md">Next</a></p>',
+        highlightComplete: true,
         toc: [],
-        scrollTop: 0,
         tocExpanded: {},
         isLoading: false,
       }],
@@ -118,8 +197,8 @@ describe('Content', () => {
         fileName: 'current.md',
         source: '# Title\n\nBody',
         html: '<h1>Title</h1><p>Body</p>',
+        highlightComplete: true,
         toc: [],
-        scrollTop: 0,
         tocExpanded: {},
         isLoading: false,
       }],
@@ -155,8 +234,8 @@ describe('Content', () => {
         fileName: 'current.md',
         source: '```js\n\n```',
         html: '<div class="code-block-wrapper"><pre class="shiki"><code><span class="line">a</span>\n\n<span class="line">b</span>\n\n<span class="line">c</span></code></pre></div>',
+        highlightComplete: true,
         toc: [],
-        scrollTop: 0,
         tocExpanded: {},
         isLoading: false,
       }],
@@ -168,4 +247,5 @@ describe('Content', () => {
       expect(container.querySelectorAll('.line-number')).toHaveLength(5);
     });
   });
+
 });

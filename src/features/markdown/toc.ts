@@ -1,10 +1,10 @@
 import { md } from './plugins';
 import type { TocItem } from '../../types';
 import { slugifyHeading } from './slug';
+import type Token from 'markdown-it/lib/token.mjs';
 
-/** 在 markdown-it 解析时收集 heading token，返回扁平 TOC */
-export function extractToc(source: string): TocItem[] {
-  const tokens = md.parse(source, {});
+/** 从已解析的 token 流收集 heading，返回扁平 TOC */
+export function collectToc(tokens: Token[]): TocItem[] {
   const items: TocItem[] = [];
   const seen = new Map<string, number>();
 
@@ -20,4 +20,9 @@ export function extractToc(source: string): TocItem[] {
     }
   }
   return items;
+}
+
+/** 在 markdown-it 解析时收集 heading token，返回扁平 TOC */
+export function extractToc(source: string): TocItem[] {
+  return collectToc(md.parse(source, {}));
 }

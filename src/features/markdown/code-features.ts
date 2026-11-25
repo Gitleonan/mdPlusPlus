@@ -57,8 +57,9 @@ export function setupCodeBlockTitle(md: MarkdownIt): void {
 	      .map((line) => line.replace(/\s*(?:\/\/|#)\s*\[!code\s+(highlight|focus|error|warning|\+\+|--)\]\s*$/, ''))
 	      .join('\n');
 
-    // 生成带语言的代码块
-    const langClass = lang ? ` class="language-${lang}"` : '';
+    // 语言标识来自 Markdown 原文，必须转义：否则 ` ```x" onmouseover="…`
+    // 会提前闭合 class 属性，把 on* 变成可执行的事件处理器。
+    const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : '';
     html += `<pre><code${langClass}>${escapeHtml(cleanContent)}</code></pre>`;
     html += `</div>\n`;
 

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import mermaid from 'mermaid';
 import featuresMd from '../../../features.md?raw';
 import { normalizeEol } from '../../utils/eol';
+import { renderMarkdown } from './render';
 
 function extractFirstMermaidFence(source: string): string {
   // Windows 检出时是 CRLF,不归一化会让 ```mermaid\n 匹配失败而返回空串
@@ -32,5 +33,13 @@ describe('features.md', () => {
     await expect(mermaid.render('test-features-mermaid', source)).resolves.toEqual(
       expect.objectContaining({ svg: expect.stringContaining('<svg') }),
     );
+  });
+
+  it('renders both dollar and ChatGPT-style math examples', () => {
+    const html = renderMarkdown(featuresMd);
+    expect(html).toContain('katex-display');
+    expect(html).not.toContain('\\(a^2 + b^2 = c^2\\)');
+    expect(html).not.toContain('\\[');
+    expect(html).not.toContain('\\]');
   });
 });
