@@ -57,6 +57,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # 只做编译检查：--no-bundle 跳过打包与 updater 签名，
+      # 因此这个 job 不需要签名密钥，也不会因缺少密钥而失败
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --no-bundle
