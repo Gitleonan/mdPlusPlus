@@ -34,6 +34,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # 缺密钥时 build 要跑七八分钟才在打包阶段报错，这里先快速失败
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          [ -n "$KEY" ] || { echo "::error::TAURI_SIGNING_PRIVATE_KEY 为空"; exit 1; }
+          [ -n "$PASS" ] || { echo "::error::TAURI_SIGNING_PRIVATE_KEY_PASSWORD 为空"; exit 1; }
+          echo "签名密钥长度 ${#KEY}，密码已设置"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -99,6 +110,16 @@ jobs:
           workspaces: src-tauri
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Validate signing secrets
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          [ -n "$KEY" ] || { echo "::error::TAURI_SIGNING_PRIVATE_KEY 为空"; exit 1; }
+          [ -n "$PASS" ] || { echo "::error::TAURI_SIGNING_PRIVATE_KEY_PASSWORD 为空"; exit 1; }
+          echo "签名密钥长度 ${#KEY}，密码已设置"
 
       # 通用二进制：一台机器同时产出 Apple Silicon 与 Intel 可用的更新包，
       # 这样 latest.json 里的 darwin-aarch64 / darwin-x86_64 都能命中。
