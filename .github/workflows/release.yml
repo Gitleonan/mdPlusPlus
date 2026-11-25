@@ -79,7 +79,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           # 生成 latest.json 供自动更新使用（应用会从 releases/latest/download/latest.json 读取）
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
           # 本项目 Windows 只出 NSIS（不含 MSI 自动更新条目），这里保持与 bundle.targets 一致
           updaterJsonPreferNsis: true
 
@@ -131,4 +131,4 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target universal-apple-darwin
-          uploadUpdaterJson: true
+          includeUpdaterJson: true
