@@ -64,10 +64,20 @@ pub fn run() {
     // macOS RunEvent::Opened、前端的 get_startup_files）都不会遇到状态缺失。
     let startup_files = collect_md_files(std::env::args().collect());
 
-    builder
+    builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_fs::init());
+
+    // 自动更新仅在桌面端可用：移动端走各自应用商店的更新机制。
+    #[cfg(not(mobile))]
+    {
+        builder = builder
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_process::init());
+    }
+
+    builder
         .manage(commands::files::StartupFiles::new(startup_files))
         .manage(WatcherState::new())
         .setup(|app| {

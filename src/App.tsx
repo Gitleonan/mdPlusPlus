@@ -10,6 +10,7 @@ import { SearchBar } from './components/SearchBar/SearchBar';
 import { Lightbox } from './components/Lightbox/Lightbox';
 import { ExportPdfModal } from './components/ExportPdfModal/ExportPdfModal';
 import { AboutModal } from './components/AboutModal/AboutModal';
+import { UpdateDialog } from './components/UpdateDialog/UpdateDialog';
 import { ThemeManager } from './components/ThemeManager/ThemeManager';
 import { useTabsStore } from './stores/tabsStore';
 import { useEditStore } from './stores/editStore';
@@ -19,6 +20,7 @@ import { useOpenFile } from './hooks/useOpenFile';
 import { useThemeInit } from './features/theme/useThemeInit';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import { useRevisionShortcuts } from './hooks/useRevisionShortcuts';
+import { useUpdater } from './hooks/useUpdater';
 import { useRevisionStore } from './stores/revisionStore';
 import { useFileWatcher } from './features/fileWatch/useFileWatcher';
 import { getStartupFiles } from './ipc/files';
@@ -39,6 +41,7 @@ export default function App() {
   useThemeInit();
   useFileWatcher();
   useRevisionShortcuts();
+  useUpdater();
 
   const contentRef = useRef<HTMLDivElement>(null);
   const hasTabs = useTabsStore((s) => s.tabs.length > 0);
@@ -178,6 +181,7 @@ export default function App() {
         open={themeManagerOpen}
         onClose={() => setThemeManagerOpen(false)}
       />
+      <UpdateDialog />
     </div>
   );
 }

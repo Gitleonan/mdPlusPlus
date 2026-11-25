@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows, Ghost, MoreHorizontal } from 'lucide-react';
+import { Plus, RotateCw, Download, Sun, Moon, Pencil, Eye, Palette, Info, X, ScanEye, GitCompareArrows, Ghost, MoreHorizontal, ArrowUpCircle } from 'lucide-react';
 import { useTabsStore } from '../../stores/tabsStore';
 import { useThemeStore } from '../../stores/themeStore';
 import { useEditStore } from '../../stores/editStore';
 import { useZenStore } from '../../stores/zenStore';
 import { useEphemeralStore } from '../../stores/ephemeralStore';
 import { useRevisionStore } from '../../stores/revisionStore';
+import { useUpdateStore } from '../../stores/updateStore';
 import { openViaDialog } from '../../hooks/useOpenFile';
 import { openContainingFolder } from '../../ipc/opener';
 
@@ -69,6 +70,10 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
   const isMonitoring = useRevisionStore(s => s.isRevisionMode);
   const enableRevisionMode = useRevisionStore(s => s.enableRevisionMode);
   const disableRevisionMode = useRevisionStore(s => s.disableRevisionMode);
+  const updateStatus = useUpdateStore((s) => s.status);
+  const updateVersion = useUpdateStore((s) => s.info?.version ?? null);
+  const openUpdateDialog = useUpdateStore((s) => s.openDialog);
+  const hasUpdate = updateStatus === 'available' && updateVersion !== null;
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const [moreMenu, setMoreMenu] = useState<SimpleMenuState | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -255,6 +260,32 @@ export function TitleBar({ onExport, onAbout, onThemeManager }: TitleBarProps) {
 
         {/* 文档操作 | 系统项 分组分隔 */}
         <span className="titlebar-sep" aria-hidden="true" />
+
+        {/* 有新版本：低调胶囊,点击才展开更新弹窗,不打断阅读 */}
+        <AnimatePresence>
+          {hasUpdate && (
+            <motion.button
+              className="update-pill"
+              onClick={openUpdateDialog}
+              title={`发现新版本 v${updateVersion},点击查看`}
+              initial={{ opacity: 0, scale: 0.85, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.85, y: -4 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+            >
+              <motion.span
+                animate={{ y: [0, -2, 0] }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                style={{ display: 'inline-flex' }}
+              >
+                <ArrowUpCircle size={12} strokeWidth={2} />
+              </motion.span>
+              v{updateVersion}
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* 6. 更多(主题管理 / 无痕会话 / 关于 收纳进溢出菜单) */}
         <button

@@ -1,12 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 import { openExternalUrl, registerFileAssociation, checkFileAssociation } from '../../ipc/opener';
 import { writeFile, getAppDataDir } from '../../ipc/files';
 import { useTabsStore } from '../../stores/tabsStore';
+import { checkForUpdatesManually, previewUpdateDialog } from '../../hooks/useUpdater';
 import { Modal } from '../ui/Modal';
 import appIcon from '../../assets/app-icon.svg';
 import featuresMd from '../../../features.md?raw';
 
-const APP_VERSION = '0.4.1';
+/** 构建时兜底值；运行时以 Tauri 的 getVersion() 为准（见下方的 useEffect） */
+const FALLBACK_VERSION = '0.4.2';
 const GITHUB_URL = 'https://github.com/Gitleonan/mdPlusPlus';
 
 interface AboutModalProps {
@@ -21,6 +24,17 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
   const [setDefaultMsg, setSetDefaultMsg] = useState<string | null>(null);
   const [isDefaultHandler, setIsDefaultHandler] = useState(true); // 默认 true 避免闪烁
   const [checkingDefault, setCheckingDefault] = useState(false);
+  const [version, setVersion] = useState(FALLBACK_VERSION);
+
+  // 版本号从安装包读取，而不是硬编码——避免 sync-version 漏跑时显示旧版本
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getVersion()
+      .then((v) => { if (!cancelled && v) setVersion(v); })
+      .catch((err) => console.warn('[AboutModal] getVersion failed:', err));
+    return () => { cancelled = true; };
+  }, [open]);
 
   // 每次打开关于窗口时检测是否为默认 MD 阅读器
   useEffect(() => {
@@ -80,7 +94,7 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
         <div className="about-modal-inner">
           <img className="about-icon" src={appIcon} alt="" aria-hidden="true" />
           <h3 className="about-title" id="about-title">md++</h3>
-          <p className="about-version">v{APP_VERSION}</p>
+          <p className="about-version">v{version}</p>
           <p className="about-desc">轻量便捷的 Markdown 阅读器</p>
 
           <div className="about-info">
@@ -99,6 +113,15 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
                 onClick={() => openExternalUrl(GITHUB_URL)}
               >
                 GitHub ↗
+              </button>
+            </div>
+            <div className="about-row">
+              <span className="about-label">版本</span>
+              <button
+                className="about-link"
+                onClick={() => { onClose(); void checkForUpdatesManually(); }}
+              >
+                检查更新
               </button>
             </div>
             <div className="about-row">
@@ -144,6 +167,17 @@ export function AboutModal({ open, onClose }: AboutModalProps) {
                 {debug ? '已开启' : '已关闭'}
               </button>
             </div>
+            {import.meta.env.DEV && (
+              <div className="about-row">
+                <span className="about-label">更新弹窗</span>
+                <button
+                  className="about-link"
+                  onClick={() => { onClose(); previewUpdateDialog(); }}
+                >
+                  预览效果（仅开发）
+                </button>
+              </div>
+            )}
           </div>
 
           <button className="about-close" onClick={onClose}>

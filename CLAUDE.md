@@ -26,7 +26,12 @@ First `pnpm tauri dev` compiles Rust dependencies (~5-10 min); subsequent starts
 
 - **CI** (`.github/workflows/ci.yml`) — push/PR to main 触发，跑前端测试 + 构建检查
 - **Release** (`.github/workflows/release.yml`) — push `v*` tag 触发，自动构建安装包并创建 Draft Release
-- Release 发布流程：改版本号 → `git tag v0.x.x` → `git push origin v0.x.x` → GitHub Actions 自动构建
+- Release 发布流程：改版本号 → `node scripts/sync-version.mjs` → `git tag v0.x.x` → `git push origin v0.x.x` → GitHub Actions 自动构建 → 手动 Publish
+- **自动更新**：完全托管在 GitHub Releases，详见 `AUTO_UPDATE.md`。要点：
+  - Windows job 先跑，macOS job `needs` 它——两个 job 并发会互相覆盖 `latest.json`
+  - 需要仓库 Secrets：`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+  - `plugins.updater.pubkey` 为空时，本地构建和运行时更新检查都会失败
+  - Draft Release 不对外可见，用户只有在 Publish 后才会收到更新
 
 ## Keyboard Shortcuts
 

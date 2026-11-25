@@ -1,7 +1,7 @@
 {
   "name": "mdplusplus",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "md++ — 轻量便捷的 Markdown 阅读器 (Windows / macOS)",
   "author": "leonan",
@@ -15,9 +15,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2",
+    "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.14.1",
     "@traptitech/markdown-it-katex": "^3.6.0",
     "diff": "^9.0.0",
     "framer-motion": "^12.40.0",

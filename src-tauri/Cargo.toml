@@ -1,6 +1,6 @@
 [package]
 name = "mdpp"
-version = "0.4.1"
+version = "0.4.2"
 description = "md++ — 轻量便捷的 Markdown 阅读器 (Windows / macOS)"
 authors = ["leonan"]
 license = "MIT"
@@ -41,3 +41,7 @@ windows = { version = "0.61", features = [
 # 仅桌面端需要（移动端不支持），cfg(any(...)) 与代码里的 #[cfg(not(mobile))] 对齐。
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
+# 自动更新：从 GitHub Releases 拉取 latest.json 并下载安装包；process 提供 relaunch()。
+# 仅桌面端支持（移动端更新走应用商店），与 lib.rs 里的 #[cfg(not(mobile))] 注册保持一致。
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"

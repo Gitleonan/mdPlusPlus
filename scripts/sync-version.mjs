@@ -39,16 +39,16 @@ if (nextTauriConf === tauriConfRaw) {
   console.log(`Synced src-tauri/tauri.conf.json to package.json version ${version}`);
 }
 
-// Sync AboutModal APP_VERSION
+// Sync AboutModal FALLBACK_VERSION（运行时以 getVersion() 为准，这里只做兜底）
 const aboutModalRaw = await readFile(aboutModalPath, 'utf8');
 const nextAboutModal = aboutModalRaw.replace(
-  /^const APP_VERSION = '.*';$/m,
-  `const APP_VERSION = '${version}';`,
+  /^const FALLBACK_VERSION = '.*';$/m,
+  `const FALLBACK_VERSION = '${version}';`,
 );
 
 if (nextAboutModal === aboutModalRaw) {
   console.log(`AboutModal already matches package.json version ${version}`);
 } else {
   await writeFile(aboutModalPath, nextAboutModal);
-  console.log(`Synced AboutModal APP_VERSION to package.json version ${version}`);
+  console.log(`Synced AboutModal FALLBACK_VERSION to package.json version ${version}`);
 }

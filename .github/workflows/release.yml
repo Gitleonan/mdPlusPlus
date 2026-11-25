@@ -8,6 +8,8 @@ on:
 permissions:
   contents: write
 
+# 两个平台必须串行：tauri-action 生成 latest.json 时是「读现有文件 → 合并 platforms → 回写」，
+# 并行跑会互相覆盖，导致某个平台的更新条目丢失。Windows 先跑，macOS 依赖它。
 jobs:
   release-windows:
     name: Build Windows
@@ -37,32 +39,46 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 更新包签名私钥：Settings → Secrets and variables → Actions 里配置
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "md++ ${{ github.ref_name }}"
           releaseBody: |
             ## md++ ${{ github.ref_name }}
 
-            轻量便捷的 Markdown 纯阅读器。
+            轻量便捷的 Markdown 阅读器。
 
             ### Windows 下载
 
-            - **MSI** — 标准 Windows 安装包
+            - **`.exe`（NSIS 安装包）** — 标准安装包，支持应用内自动更新
 
             ### macOS 下载
 
-            - **DMG** — 标准 macOS 磁盘映像
+            - **DMG** — 标准 macOS 磁盘映像，同时支持 Apple Silicon 与 Intel
 
             ### 系统要求
 
             - Windows 10 1809+（需 WebView2 运行时，Win11 默认自带）
             - macOS 11.0+ (Big Sur)
+
+            ### 关于自动更新
+
+            本版本起内置应用内更新检测。从 **0.4.2** 开始，之后的新版本会在应用内自动提示；
+            0.4.1 及更早版本没有该功能，需手动下载安装本版一次。
           releaseDraft: true
           prerelease: false
+          # 生成 latest.json 供自动更新使用（应用会从 releases/latest/download/latest.json 读取）
+          uploadUpdaterJson: true
+          # 本项目 Windows 只出 NSIS（不含 MSI 自动更新条目），这里保持与 bundle.targets 一致
+          updaterJsonPreferNsis: true
 
   release-macos:
     name: Build macOS
     runs-on: macos-latest
+    # 串行 + 等 Windows 完成，避免 latest.json 并发读写互相覆盖
+    needs: release-windows
     steps:
       - uses: actions/checkout@v4
 
@@ -78,6 +94,9 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Add x86_64 target for Universal build
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -85,28 +104,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # 通用二进制：一台机器同时产出 Apple Silicon 与 Intel 可用的更新包，
+      # 这样 latest.json 里的 darwin-aarch64 / darwin-x86_64 都能命中。
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "md++ ${{ github.ref_name }}"
-          releaseBody: |
-            ## md++ ${{ github.ref_name }}
-
-            轻量便捷的 Markdown 纯阅读器。
-
-            ### Windows 下载
-
-            - **MSI** — 标准 Windows 安装包
-
-            ### macOS 下载
-
-            - **DMG** — 标准 macOS 磁盘映像
-
-            ### 系统要求
-
-            - Windows 10 1809+（需 WebView2 运行时，Win11 默认自带）
-            - macOS 11.0+ (Big Sur)
           releaseDraft: true
           prerelease: false
+          args: --target universal-apple-darwin
+          uploadUpdaterJson: true
