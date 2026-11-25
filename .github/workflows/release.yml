@@ -132,5 +132,4 @@ jobs:
           releaseName: "md++ ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false
-          args: --target universal-apple-darwin
           includeUpdaterJson: true
