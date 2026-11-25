@@ -65,7 +65,7 @@ jobs:
 
             ### macOS 下载
 
-            - **DMG** — 标准 macOS 磁盘映像，同时支持 Apple Silicon 与 Intel
+            - **DMG** — 标准 macOS 磁盘映像（Apple Silicon）
 
             ### 系统要求
 
@@ -101,9 +101,6 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Add x86_64 target for Universal build
-        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
-
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -121,8 +118,8 @@ jobs:
           [ -n "$PASS" ] || { echo "::error::TAURI_SIGNING_PRIVATE_KEY_PASSWORD 为空"; exit 1; }
           echo "签名密钥长度 ${#KEY}，密码已设置"
 
-      # 通用二进制：一台机器同时产出 Apple Silicon 与 Intel 可用的更新包，
-      # 这样 latest.json 里的 darwin-aarch64 / darwin-x86_64 都能命中。
+      # 只出 Apple Silicon 构建：latest.json 里只会写 darwin-aarch64，
+      # Intel Mac 用户收不到自动更新，需手动下载。
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
