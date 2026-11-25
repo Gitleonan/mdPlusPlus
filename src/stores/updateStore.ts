@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getVersion } from '@tauri-apps/api/app';
 import {
   checkForUpdate,
   downloadAndInstallUpdate,
@@ -26,6 +27,10 @@ export interface UpdateInfo {
 interface UpdateState {
   status: UpdateStatus;
   info: UpdateInfo | null;
+  /** 当前安装的版本；getVersion() 失败时为 null */
+  currentVersion: string | null;
+  /** 检查到的最新版本；已是最新时与 currentVersion 相同 */
+  latestVersion: string | null;
   /** 0–1；total 未知时为 null，表示按不确定进度展示 */
   progress: number | null;
   downloaded: number;
@@ -62,9 +67,20 @@ function describeError(err: unknown): string {
   return message;
 }
 
+/** 读取当前安装版本；浏览器预览与测试环境没有 Tauri，返回 null */
+async function readCurrentVersion(): Promise<string | null> {
+  try {
+    return await getVersion();
+  } catch {
+    return null;
+  }
+}
+
 export const useUpdateStore = create<UpdateState>((set, get) => ({
   status: 'idle',
   info: null,
+  currentVersion: null,
+  latestVersion: null,
   progress: null,
   downloaded: 0,
   total: null,
@@ -76,20 +92,23 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     // 已有待安装的更新时不重复检查，避免丢掉已下载的句柄
     if (get().status === 'downloading' || get().status === 'installing') return;
     inFlight = true;
-    set({ status: 'checking', error: null });
+    const currentVersion = opts.currentVersion ?? (await readCurrentVersion());
+    set({ status: 'checking', error: null, currentVersion });
     try {
       const update = await checkForUpdate();
       if (!update) {
-        set({ status: 'up-to-date', info: null });
+        // 没有更新时更新器不返回版本信息，最新版本即当前版本
+        set({ status: 'up-to-date', info: null, latestVersion: currentVersion });
         return;
       }
       await releaseUpdate(pendingUpdate);
       pendingUpdate = update;
       set({
         status: 'available',
+        latestVersion: update.version,
         info: {
           version: update.version,
-          currentVersion: update.currentVersion,
+          currentVersion: update.currentVersion || currentVersion || '—',
           date: update.date ?? null,
           body: update.body ?? null,
         },
@@ -158,6 +177,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     set({
       status: 'idle',
       info: null,
+      latestVersion: null,
       progress: null,
       downloaded: 0,
       total: null,

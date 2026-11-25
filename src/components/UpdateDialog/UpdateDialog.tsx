@@ -37,10 +37,10 @@ function Stage({ stageKey, children }: { stageKey: UpdateStatus; children: React
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={stageKey}
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 10, filter: 'blur(3px)' }}
-        animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, filter: 'blur(0px)' }}
-        exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8, filter: 'blur(3px)' }}
-        transition={{ duration: 0.24, ease: EASE }}
+        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6 }}
+        animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+        exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
+        transition={{ duration: 0.16, ease: EASE }}
       >
         {children}
       </motion.div>
@@ -51,6 +51,8 @@ function Stage({ stageKey, children }: { stageKey: UpdateStatus; children: React
 export function UpdateDialog() {
   const status = useUpdateStore((s) => s.status);
   const info = useUpdateStore((s) => s.info);
+  const currentVersion = useUpdateStore((s) => s.currentVersion);
+  const latestVersion = useUpdateStore((s) => s.latestVersion);
   const progress = useUpdateStore((s) => s.progress);
   const downloaded = useUpdateStore((s) => s.downloaded);
   const total = useUpdateStore((s) => s.total);
@@ -102,10 +104,10 @@ export function UpdateDialog() {
             aria-labelledby="update-modal-title"
             ref={cardRef}
             layout
-            initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 18 }}
-            animate={reduce ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ duration: 0.3, ease: EASE, layout: { duration: 0.28, ease: EASE } }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 6 }}
+            transition={{ duration: 0.18, ease: EASE, layout: { duration: 0.2, ease: EASE } }}
           >
             <div className="update-modal-inner">
               {!locked && (
@@ -117,42 +119,27 @@ export function UpdateDialog() {
               <Stage stageKey={stageStatus}>
                 {stageStatus === 'available' && info && (
                   <div className="update-stage">
-                    <motion.div
-                      className="update-badge"
-                      initial={reduce ? false : { scale: 0.7, rotate: -8 }}
-                      animate={{ scale: 1, rotate: 0 }}
-                      transition={{ type: 'spring', stiffness: 320, damping: 18 }}
-                    >
+                    <div className="update-badge">
                       <ArrowUpCircle size={22} strokeWidth={1.7} />
-                    </motion.div>
+                    </div>
                     <h3 className="update-title" id="update-modal-title">
                       发现新版本
                     </h3>
                     <p className="update-version-line">
                       <span className="update-version-old">v{info.currentVersion}</span>
-                      <motion.span
-                        className="update-version-arrow"
-                        initial={reduce ? false : { x: -4, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        transition={{ delay: 0.1, duration: 0.25, ease: EASE }}
-                      >
-                        →
-                      </motion.span>
+                      <span className="update-version-arrow">→</span>
                       <span className="update-version-new">v{info.version}</span>
                     </p>
 
                     {notes.length > 0 && (
                       <div className="update-notes">
                         {notes.map((n, i) => (
-                          <motion.p
+                          <p
                             key={`${n.kind}-${i}`}
                             className={`update-note update-note-${n.kind}`}
-                            initial={reduce ? false : { opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.08 + Math.min(i, 10) * 0.025, duration: 0.22, ease: EASE }}
                           >
                             {n.value}
-                          </motion.p>
+                          </p>
                         ))}
                       </div>
                     )}
@@ -161,17 +148,14 @@ export function UpdateDialog() {
                       <button className="update-btn" onClick={closeDialog}>
                         稍后
                       </button>
-                      <motion.button
+                      <button
                         className="update-btn primary"
                         onClick={install}
-                        whileHover={reduce ? undefined : { scale: 1.02 }}
-                        whileTap={reduce ? undefined : { scale: 0.98 }}
-                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                         data-autofocus
                       >
                         <Download size={13} strokeWidth={1.8} />
                         立即更新
-                      </motion.button>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -246,7 +230,9 @@ export function UpdateDialog() {
                     <h3 className="update-title" id="update-modal-title">
                       已是最新版本
                     </h3>
-                    <p className="update-sub">当前版本 v{info?.currentVersion ?? '—'}，暂无可用更新。</p>
+                    <p className="update-sub">
+                      当前版本 v{currentVersion ?? '—'} · 最新版本 v{latestVersion ?? currentVersion ?? '—'}，暂无可用更新。
+                    </p>
                     <div className="update-actions">
                       <button className="update-btn primary" onClick={closeDialog} data-autofocus>
                         知道了
